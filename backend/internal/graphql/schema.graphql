@@ -1,0 +1,111 @@
+# ─── IMPORTANT ───────────────────────────────────────────────────────────────
+# The backend is deliberately blind.
+# content, title, folder_name — all are encrypted blobs.
+# The server stores and returns them. It never inspects them.
+# ─────────────────────────────────────────────────────────────────────────────
+
+type EncryptedNote {
+  id: ID!
+  # All content fields are base64-encoded AES-256-GCM ciphertext.
+  # The server never decrypts these.
+  encryptedTitle:   String!   # AES-GCM(title, vaultKey)
+  encryptedContent: String!   # AES-GCM(content, vaultKey)
+  encryptedFolder:  String    # AES-GCM(folderName, vaultKey) — nullable
+  encryptedTags:    String    # AES-GCM(JSON tag array, vaultKey) — nullable
+  # Unencrypted metadata — safe to store plaintext
+  contentHash:  String!   # SHA-256 of plaintext content (for dedup, not decryption)
+  byteSize:     Int!       # Size of ciphertext blob in bytes
+  pinned:       Boolean!
+  deleted:      Boolean!
+  deletedAt:    String
+  createdAt:    String!
+  updatedAt:    String!
+  syncedAt:     String
+}
+
+# Encrypted vault config stored server-side.
+# Contains the encrypted vault key so the user can sync across devices.
+# The vault key itself is encrypted with a key derived from master password.
+type VaultConfig {
+  id:                   ID!
+  # encryptedVaultKey = AES-GCM(vaultKey, masterPasswordDerivedKey)
+  encryptedVaultKey:    String!
+  # argon2Params stored so client knows how to re-derive the key
+  argon2Memory:         Int!
+  argon2Iterations:     Int!
+  argon2Parallelism:    Int!
+  argon2Salt:           String!  # hex-encoded salt (not secret)
+  # Recovery key = encrypted backup of vault key
+  encryptedRecoveryKey: String!
+  recoveryKeySalt:      String!
+  createdAt:            String!
+  updatedAt:            String!
+}
+
+type User {
+  id:          ID!
+  email:       String!
+  vaultConfig: VaultConfig
+  noteCount:   Int!
+  createdAt:   String!
+}
+
+input CreateNoteInput {
+  encryptedTitle:   String!
+  encryptedContent: String!
+  encryptedFolder:  String
+  encryptedTags:    String
+  contentHash:      String!
+  byteSize:         Int!
+  pinned:           Boolean
+}
+
+input UpdateNoteInput {
+  encryptedTitle:   String
+  encryptedContent: String
+  encryptedFolder:  String
+  encryptedTags:    String
+  contentHash:      String
+  byteSize:         Int
+  pinned:           Boolean
+}
+
+input SetupVaultInput {
+  encryptedVaultKey:    String!
+  argon2Memory:         Int!
+  argon2Iterations:     Int!
+  argon2Parallelism:    Int!
+  argon2Salt:           String!
+  encryptedRecoveryKey: String!
+  recoveryKeySalt:      String!
+}
+
+type SyncResult {
+  notes:       [EncryptedNote!]!
+  deletedIds:  [ID!]!
+  serverTime:  String!
+}
+
+type Query {
+  me:           User!
+  vaultConfig:  VaultConfig
+  notes(
+    limit:         Int
+    offset:        Int
+    includeDeleted: Boolean
+  ): [EncryptedNote!]!
+  note(id: ID!): EncryptedNote
+  # Returns notes updated after the given timestamp — for incremental sync
+  syncNotes(since: String!): SyncResult!
+}
+
+type Mutation {
+  setupVault(input: SetupVaultInput!):    VaultConfig!
+  updateVaultConfig(input: SetupVaultInput!): VaultConfig!
+  createNote(input: CreateNoteInput!):    EncryptedNote!
+  updateNote(id: ID!, input: UpdateNoteInput!): EncryptedNote!
+  deleteNote(id: ID!):                    Boolean!
+  permanentlyDeleteNote(id: ID!):         Boolean!
+  restoreNote(id: ID!):                   Boolean!
+  emptyTrash:                             Boolean!
+}
