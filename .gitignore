@@ -1,0 +1,65 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# Node.js
+node_modules/
+dist/
+build/
+.npm
+.eslintcache
+.stylelintcache
+
+# Expo
+.expo/
+*.jks
+*.p8
+*.keystore
+*.key
+*.pem
+google-services.json
+GoogleService-Info.plist
+
+# Go
+bin/
+pkg/
+vendor/
+backend/backend  # Compiled binary if named 'backend'
+main  # Generic compiled binary naming
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# GraphQL
+# Depending on your setup, you might want to ignore generated.go if it's large
+# backend/internal/graphql/generated.go
+
+# Docker
+.dockerignore
