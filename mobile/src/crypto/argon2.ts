@@ -19,7 +19,13 @@ import argon2 from 'argon2-wasm-pro';
 export interface DerivedKey {
   key: Uint8Array;       // 32-byte derived key
   salt: string;          // hex-encoded salt (stored, not secret)
-  params: typeof ARGON2_PARAMS;
+  params: {
+    memory: number;
+    iterations: number;
+    parallelism: number;
+    hashLength: number;
+    type: number;
+  };
 }
 
 /**
