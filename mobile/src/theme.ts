@@ -27,16 +27,25 @@ export const COLORS = {
 
   // Semantic
   amber: '#f59e0b',
+  amberAccent: '#d97706',
   amberDark: '#92400e',
   amberBg: '#1a0e00',
   green: '#22c55e',
   red: '#ef4444',
+  rose: '#e11d48',
   redDark: '#7f1d1d',
+  indigo: '#4f46e5',
+  slate500: '#64748b',
+
+  // Encryption bar
+  encryptionBg: '#0d1021',
 
   // Overlays
   whiteAlpha5: 'rgba(255,255,255,0.05)',
   whiteAlpha10: 'rgba(255,255,255,0.1)',
+  tealAlpha10: 'rgba(13,115,119,0.1)',
   tealAlpha20: 'rgba(13,115,119,0.2)',
+  tealAlpha30: 'rgba(13,115,119,0.3)',
   tealAlpha40: 'rgba(13,115,119,0.4)',
 } as const;
 
