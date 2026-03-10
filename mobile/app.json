@@ -5,36 +5,49 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
+    "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0c0a09"
-    },
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.securememo"
+      "backgroundColor": "#0a0a0f"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0c0a09"
+        "backgroundColor": "#0a0a0f"
       },
-      "package": "com.anonymous.securememo"
+      "package": "com.zubimendi.securememo",
+      "versionCode": 1,
+      "permissions": [
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ],
+      "googleServicesFile": "./google-services.json"
     },
-    "web": {
-      "favicon": "./assets/favicon.png",
-      "bundler": "metro"
+    "ios": {
+      "bundleIdentifier": "com.zubimendi.securememo",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "SecureMemo uses Face ID to protect your encrypted notes"
+      }
     },
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-crypto",
-      "expo-sqlite"
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow SecureMemo to use Face ID to unlock your vault"
+        }
+      ]
     ],
-    "experiments": {
-      "typedRoutes": true
+    "scheme": "securememo",
+    "extra": {
+      "eas": {
+        "projectId": "YOUR_EAS_PROJECT_ID"
+      }
     }
   }
 }
