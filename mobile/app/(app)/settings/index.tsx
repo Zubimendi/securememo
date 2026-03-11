@@ -9,6 +9,7 @@ import {
   Platform,
 } from 'react-native';
 import { Svg, Path, Circle, Rect, Polyline, Line } from 'react-native-svg';
+import { useRouter } from 'expo-router';
 import { COLORS, SPACING, BORDER_RADIUS } from '../../../src/theme';
 
 /* ── Icons ── */
@@ -94,6 +95,8 @@ function LogoutIcon() {
 }
 
 export default function SettingsScreen() {
+  const router = useRouter();
+  
   return (
     <View style={styles.container}>
       <ScrollView
@@ -135,7 +138,7 @@ export default function SettingsScreen() {
           <View style={styles.sectionGroup}>
             <Text style={styles.groupTitle}>VAULT SECURITY</Text>
             <View style={styles.groupCard}>
-              <Pressable style={styles.row}>
+              <Pressable style={styles.row} onPress={() => router.push('/settings/security')}>
                 <ShieldIcon />
                 <Text style={styles.rowLabel}>Security Settings</Text>
                 <ChevronRightIcon />
@@ -163,7 +166,7 @@ export default function SettingsScreen() {
           <View style={styles.sectionGroup}>
             <Text style={styles.groupTitle}>SYNC & BACKUP</Text>
             <View style={styles.groupCard}>
-              <View style={styles.row}>
+              <Pressable style={styles.row} onPress={() => router.push('/settings/sync')}>
                 <View style={styles.rowTextCol}>
                   <Text style={styles.rowLabel}>Cloud Sync</Text>
                   <Text style={styles.rowSubLabel}>On · Last synced 2m ago</Text>
@@ -172,7 +175,7 @@ export default function SettingsScreen() {
                 <View style={styles.switchTrack}>
                   <View style={styles.switchThumb} />
                 </View>
-              </View>
+              </Pressable>
               
               <View style={styles.divider} />
               
@@ -252,6 +255,13 @@ export default function SettingsScreen() {
                 <Text style={styles.rowLabel}>Open Source Licenses</Text>
               </Pressable>
               
+              <View style={styles.divider} />
+              
+              <Pressable style={styles.row} onPress={() => router.push('/trash')}>
+                <Text style={styles.rowLabel}>Trash</Text>
+                <ChevronRightIcon />
+              </Pressable>
+
               <View style={styles.divider} />
               
               <Pressable style={styles.row}>

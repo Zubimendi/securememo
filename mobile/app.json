@@ -23,8 +23,7 @@
         "USE_FINGERPRINT",
         "INTERNET",
         "ACCESS_NETWORK_STATE"
-      ],
-      "googleServicesFile": "./google-services.json"
+      ]
     },
     "ios": {
       "bundleIdentifier": "com.zubimendi.securememo",
@@ -41,7 +40,10 @@
         {
           "faceIDPermission": "Allow SecureMemo to use Face ID to unlock your vault"
         }
-      ]
+      ],
+      "expo-asset",
+      "expo-font",
+      "expo-sqlite"
     ],
     "scheme": "securememo",
     "extra": {

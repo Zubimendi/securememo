@@ -33,6 +33,14 @@ function SearchIcon({ color }: { color: string }) {
   );
 }
 
+function VaultIcon({ color }: { color: string }) {
+  return (
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </Svg>
+  );
+}
+
 function SettingsIcon({ color }: { color: string }) {
   return (
     <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
@@ -71,13 +79,6 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
-        name="folders"
-        options={{
-          title: 'Folders',
-          tabBarIcon: ({ color }) => <FoldersIcon color={color} />,
-        }}
-      />
-      <Tabs.Screen
         name="search"
         options={{
           title: 'Search',
@@ -85,15 +86,25 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
-        name="trash"
+        name="folders"
+        options={{
+          title: 'Vault',
+          tabBarIcon: ({ color }) => <VaultIcon color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="settings/index"
         options={{
           title: 'Settings',
           tabBarIcon: ({ color }) => <SettingsIcon color={color} />,
         }}
       />
-      {/* Hide note and settings sub-routes from tab bar */}
+      {/* Hide specific pages from tab bar */}
+      <Tabs.Screen name="trash" options={{ href: null }} />
+      <Tabs.Screen name="pro" options={{ href: null }} />
       <Tabs.Screen name="note" options={{ href: null }} />
-      <Tabs.Screen name="settings" options={{ href: null }} />
+      <Tabs.Screen name="settings/security" options={{ href: null }} />
+      <Tabs.Screen name="settings/sync" options={{ href: null }} />
     </Tabs>
   );
 }
