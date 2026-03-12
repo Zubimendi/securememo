@@ -102,7 +102,8 @@ export default function AppLayout() {
       {/* Hide specific pages from tab bar */}
       <Tabs.Screen name="trash" options={{ href: null }} />
       <Tabs.Screen name="pro" options={{ href: null }} />
-      <Tabs.Screen name="note" options={{ href: null }} />
+      <Tabs.Screen name="note/[id]" options={{ href: null }} />
+      <Tabs.Screen name="note/new" options={{ href: null }} />
       <Tabs.Screen name="settings/security" options={{ href: null }} />
       <Tabs.Screen name="settings/sync" options={{ href: null }} />
     </Tabs>
