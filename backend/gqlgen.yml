@@ -10,5 +10,5 @@ resolver:
   layout: follow-schema
   dir: internal/graphql
   package: graphql
-autobind:
-  - "github.com/Zubimendi/securememo/internal/store"
+# autobind:
+#   - "github.com/Zubimendi/securememo/internal/store"
