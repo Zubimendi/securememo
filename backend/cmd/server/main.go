@@ -18,10 +18,9 @@ import (
 )
 
 func main() {
-	// 1. Load environment variables
-	if err := godotenv.Load("../../.env"); err != nil {
-		log.Println("Warning: .env file not found, using system environment variables")
-	}
+	// 1. Load environment variables — try multiple paths
+	_ = godotenv.Load(".env")
+	_ = godotenv.Load("../../.env")
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -75,6 +74,6 @@ func main() {
 		r.Handle("/query", srv)
 	})
 
-	log.Printf("Connect to http://localhost:%s/ for GraphQL playground", port)
+	log.Printf("🚀 SecureMemo API running on http://localhost:%s/", port)
 	log.Fatal(http.ListenAndServe(":"+port, r))
 }

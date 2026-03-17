@@ -1,21 +1,25 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
   TextInput,
   Pressable,
   ScrollView,
-  FlatList,
   StyleSheet,
-  Animated,
+  ActivityIndicator,
+  RefreshControl,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Svg, Path, Circle, Line, Polyline } from 'react-native-svg';
+import { useQuery } from '@apollo/client';
+import { Svg, Path, Circle, Line } from 'react-native-svg';
 import { COLORS, SPACING, BORDER_RADIUS } from '../../src/theme';
-import { useNotesStore, Note } from '../../src/store/notesStore';
+import { useNotesStore } from '../../src/store/notesStore';
+import { useVaultStore } from '../../src/store/vaultStore';
 import NoteCard from '../../src/components/NoteCard';
 import FolderChip from '../../src/components/FolderChip';
 import { LinearGradient } from 'expo-linear-gradient';
+import { GET_NOTES } from '../../src/graphql/queries';
 
 // Icons
 function ShieldLockIcon() {
@@ -30,7 +34,7 @@ function SearchIcon() {
   return (
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
       <Circle cx={11} cy={11} r={8} />
-      <Line x1={21} y1={21} x2={16.65} y2={16.65} />
+      <Line x1="21" y1="21" x2="16.65" y2="16.65" />
     </Svg>
   );
 }
@@ -62,41 +66,57 @@ function PlusIcon() {
   );
 }
 
-// Accent colors for notes
-const ACCENT_COLORS = [
-  COLORS.vaultTeal,
-  '#f59e0b',
-  '#f43f5e',
-  '#6366f1',
-  '#22c55e',
-  '#a855f7',
-];
-
-// Demo data — in production, this comes from the notesStore
-const DEMO_PINNED = [
-  { id: '1', title: 'Investment Strategy 2024', time: '2h ago' },
-  { id: '2', title: 'Project Phoenix Credentials', time: '5h ago' },
-  { id: '3', title: 'Dream Journal', time: 'Yesterday' },
-];
-
-const DEMO_NOTES = [
-  { id: '4', title: 'Team Sprint Planning', preview: 'Reviewing the Q3 goals and individual contribution metrics for the engineering team...', time: '10:45 AM', color: COLORS.vaultTeal },
-  { id: '5', title: 'Monthly Grocery List', preview: 'Organic honey, sourdough starter, almond milk, kale, and those specific Italian beans...', time: '08:20 AM', color: '#f59e0b' },
-  { id: '6', title: 'Password Recovery Keys', preview: 'Master key sequences for the backup hardware wallet and cold storage...', time: 'Yesterday', color: '#f43f5e' },
-  { id: '7', title: 'Book Summaries: Deep Work', preview: 'Cal Newport discusses the importance of uninterrupted concentration in the digital age...', time: '2 days ago', color: '#6366f1' },
-];
-
 const FILTER_CHIPS = ['All Notes', 'Personal', 'Work', 'Finance', 'Ideas'];
 
 export default function HomeScreen() {
   const router = useRouter();
   const [activeFilter, setActiveFilter] = useState('All Notes');
   const [searchQuery, setSearchQuery] = useState('');
+  
+  const { notes, loadNotes, isLoading: storeLoading } = useNotesStore();
+  const { vaultKey, isUnlocked } = useVaultStore();
 
-  // In production, use the real notes store:
-  // const { notes } = useNotesStore();
-  // const pinnedNotes = notes.filter(n => n.pinned && !n.deleted);
-  // const recentNotes = notes.filter(n => !n.pinned && !n.deleted);
+  const { data, loading, error, refetch } = useQuery(GET_NOTES, {
+    variables: { limit: 100 },
+    skip: !vaultKey || !isUnlocked,
+    fetchPolicy: 'network-only',
+  });
+
+  const onRefresh = useCallback(async () => {
+    if (refetch) await refetch();
+  }, [refetch]);
+
+  useEffect(() => {
+    if (data?.notes && vaultKey) {
+      loadNotes(data.notes, vaultKey);
+    }
+  }, [data, vaultKey]);
+
+  // Derived filter state
+  const filteredNotes = useMemo(() => {
+    return notes.filter(n => {
+      if (n.deleted) return false;
+      const matchesSearch = n.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                           n.content.toLowerCase().includes(searchQuery.toLowerCase());
+      if (!matchesSearch) return false;
+      if (activeFilter !== 'All Notes') return n.folder?.toUpperCase() === activeFilter.toUpperCase();
+      return true;
+    });
+  }, [notes, searchQuery, activeFilter]);
+
+  const pinnedNotes = filteredNotes.filter(n => n.pinned);
+  const recentNotes = filteredNotes.filter(n => !n.pinned);
+
+  const formatTime = (isoString?: string) => {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    if (diff < 60000) return 'Just now';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+    return date.toLocaleDateString();
+  };
 
   return (
     <View style={styles.container}>
@@ -112,18 +132,23 @@ export default function HomeScreen() {
             <Pressable style={styles.iconButton}>
               <SortIcon />
             </Pressable>
-            <View style={styles.avatar}>
+            <Pressable 
+              style={styles.avatar}
+              onPress={() => router.push('/(app)/settings')}
+            >
               <Text style={styles.avatarText}>U</Text>
-            </View>
+            </Pressable>
           </View>
         </View>
 
         {/* Encryption Status Badge */}
         <View style={styles.statusBadge}>
           <View style={styles.statusDotOuter}>
-            <View style={styles.statusDot} />
+            <View style={[styles.statusDot, { backgroundColor: isUnlocked ? '#22c55e' : '#ef4444' }]} />
           </View>
-          <Text style={styles.statusText}>VAULT UNLOCKED · AES-256 ACTIVE</Text>
+          <Text style={styles.statusText}>
+            {isUnlocked ? 'VAULT UNLOCKED · AES-256 ACTIVE' : 'VAULT LOCKED'}
+          </Text>
         </View>
 
         {/* Search Bar */}
@@ -144,6 +169,13 @@ export default function HomeScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={onRefresh}
+            tintColor={COLORS.vaultTeal}
+          />
+        }
       >
         {/* Filter Chips */}
         <ScrollView
@@ -161,52 +193,70 @@ export default function HomeScreen() {
           ))}
         </ScrollView>
 
-        {/* Pinned Notes Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>PINNED</Text>
-            <PinIcon />
+        {loading && notes.length === 0 ? (
+          <View style={{ padding: 40, alignItems: 'center' }}>
+            <ActivityIndicator color={COLORS.vaultTeal} size="large" />
+            <Text style={{ color: '#94a3b8', marginTop: 12 }}>Unlocking your vault...</Text>
           </View>
+        ) : (
+          <>
+            {/* Pinned Notes Section */}
+            {pinnedNotes.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>PINNED</Text>
+                  <PinIcon />
+                </View>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.pinnedRow}
-          >
-            {DEMO_PINNED.map((note, index) => (
-              <Pressable
-                key={note.id}
-                style={styles.pinnedCard}
-                onPress={() => router.push(`/(app)/note/${note.id}`)}
-              >
-                {/* Subtle glow on first card */}
-                {index === 0 && <View style={styles.pinnedGlow} />}
-                <Text style={styles.pinnedTitle} numberOfLines={2}>
-                  {note.title}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.pinnedRow}
+                >
+                  {pinnedNotes.map((note, index) => (
+                    <Pressable
+                      key={note.id}
+                      style={styles.pinnedCard}
+                      onPress={() => router.push(`/(app)/note/${note.id}`)}
+                    >
+                      {index === 0 && <View style={styles.pinnedGlow} />}
+                      <Text style={styles.pinnedTitle} numberOfLines={2}>
+                        {note.title || 'Untitled'}
+                      </Text>
+                      <Text style={styles.pinnedTime}>Modified {formatTime(note.updatedAt)}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Recent Notes List */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeaderSimple}>
+                <Text style={styles.sectionTitle}>
+                  {activeFilter === 'All Notes' ? 'RECENT NOTES' : activeFilter.toUpperCase()}
                 </Text>
-                <Text style={styles.pinnedTime}>Modified {note.time}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
+              </View>
 
-        {/* Recent Notes List */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeaderSimple}>
-            <Text style={styles.sectionTitle}>RECENT NOTES</Text>
-          </View>
+              {recentNotes.length === 0 && !loading && (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <Text style={{ color: '#64748b' }}>No notes found.</Text>
+                </View>
+              )}
 
-          {DEMO_NOTES.map((note) => (
-            <NoteCard
-              key={note.id}
-              title={note.title}
-              preview={note.preview}
-              time={note.time}
-              accentColor={note.color}
-              onPress={() => router.push(`/(app)/note/${note.id}`)}
-            />
-          ))}
-        </View>
+              {recentNotes.map((note) => (
+                <NoteCard
+                  key={note.id}
+                  title={note.title || 'Untitled'}
+                  preview={note.content.substring(0, 80).replace(/\n/g, ' ')}
+                  time={formatTime(note.updatedAt)}
+                  accentColor={COLORS.vaultTeal}
+                  onPress={() => router.push(`/(app)/note/${note.id}`)}
+                />
+              ))}
+            </View>
+          </>
+        )}
 
         {/* Bottom padding for FAB + tab bar */}
         <View style={{ height: 120 }} />
@@ -308,7 +358,6 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#22c55e',
   },
   statusText: {
     fontSize: 11,
@@ -426,5 +475,24 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+  },
+  loadingText: {
+    color: '#94a3b8',
+    fontSize: 16,
+  },
+  emptyContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: '#64748b',
+    fontSize: 14,
+    textAlign: 'center',
   },
 });

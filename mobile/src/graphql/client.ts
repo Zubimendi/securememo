@@ -3,8 +3,10 @@ import { setContext } from '@apollo/client/link/context';
 import { onError } from '@apollo/client/link/error';
 import { supabase } from '../lib/supabase';
 
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8080';
+
 const httpLink = createHttpLink({
-  uri: process.env.EXPO_PUBLIC_API_URL + '/query',
+  uri: API_URL + '/query',
 });
 
 // Attach Supabase JWT to every request

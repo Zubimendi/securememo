@@ -1,16 +1,21 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
   ScrollView,
   Pressable,
   StyleSheet,
-  Switch,
+  ActivityIndicator,
   Platform,
+  Alert,
 } from 'react-native';
-import { Svg, Path, Circle, Rect, Polyline, Line } from 'react-native-svg';
+import { Svg, Path, Polyline, Line, Rect, Circle } from 'react-native-svg';
 import { useRouter } from 'expo-router';
+import { useQuery } from '@apollo/client';
 import { COLORS, SPACING, BORDER_RADIUS } from '../../../src/theme';
+import { useAuth } from '../../../src/providers/AuthProvider';
+import { useVaultStore } from '../../../src/store/vaultStore';
+import { GET_ME } from '../../../src/graphql/queries';
 
 /* ── Icons ── */
 
@@ -39,7 +44,6 @@ function ShieldIcon() {
 }
 
 function KeyIcon() {
-  // accent-amber
   return (
     <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
       <Path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
@@ -64,26 +68,6 @@ function SyncIcon() {
   );
 }
 
-function DownloadIcon() {
-  return (
-    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={COLORS.textDim} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <Path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <Polyline points="7 10 12 15 17 10" />
-      <Line x1="12" y1="15" x2="12" y2="3" />
-    </Svg>
-  );
-}
-
-function UploadIcon() {
-  return (
-    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={COLORS.textDim} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <Path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <Polyline points="17 8 12 3 7 8" />
-      <Line x1="12" y1="3" x2="12" y2="15" />
-    </Svg>
-  );
-}
-
 function LogoutIcon() {
   return (
     <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -96,7 +80,40 @@ function LogoutIcon() {
 
 export default function SettingsScreen() {
   const router = useRouter();
-  
+  const { signOut, user } = useAuth();
+  const { lock } = useVaultStore();
+
+  const { data, loading, refetch } = useQuery(GET_ME);
+
+  const handleSignOut = useCallback(() => {
+    Alert.alert(
+      "Sign Out",
+      "This will lock your vault and clear keys from memory. Are you sure?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Sign Out", 
+          style: "destructive", 
+          onPress: async () => {
+            await lock();
+            await signOut();
+            router.replace('/(auth)/welcome');
+          } 
+        }
+      ]
+    );
+  }, [signOut, lock, router]);
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator color={COLORS.vaultTeal} size="large" />
+      </View>
+    );
+  }
+
+  const me = data?.me;
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -112,23 +129,29 @@ export default function SettingsScreen() {
               <MoreVertIcon />
             </Pressable>
           </View>
-          <Text style={styles.subtitle}>You have 47 notes · 2.3 MB encrypted</Text>
+          <Text style={styles.subtitle}>
+            {me?.noteCount || 0} notes secured in vault
+          </Text>
         </View>
 
         {/* ── User Info Card ── */}
         <View style={styles.userInfoSection}>
           <View style={styles.userInfoCard}>
             <View style={styles.userAvatar}>
-              <Text style={styles.userAvatarText}>U</Text>
+              <Text style={styles.userAvatarText}>
+                {me?.email?.charAt(0).toUpperCase() || 'U'}
+              </Text>
             </View>
             <View style={styles.userInfoRight}>
               <View style={styles.userInfoTopRow}>
-                <Text style={styles.userEmail}>user@example.com</Text>
+                <Text style={styles.userEmail} numberOfLines={1}>{me?.email}</Text>
                 <Pressable>
                   <Text style={styles.accountLink}>Account →</Text>
                 </Pressable>
               </View>
-              <Text style={styles.vaultCreated}>Vault created: Dec 2024</Text>
+              <Text style={styles.vaultCreated}>
+                Connected since {me?.vaultConfig?.createdAt ? new Date(me.vaultConfig.createdAt).toLocaleDateString() : 'N/A'}
+              </Text>
             </View>
           </View>
         </View>
@@ -138,9 +161,9 @@ export default function SettingsScreen() {
           <View style={styles.sectionGroup}>
             <Text style={styles.groupTitle}>VAULT SECURITY</Text>
             <View style={styles.groupCard}>
-              <Pressable style={styles.row} onPress={() => router.push('/settings/security')}>
+              <Pressable style={styles.row}>
                 <ShieldIcon />
-                <Text style={styles.rowLabel}>Security Settings</Text>
+                <Text style={styles.rowLabel}>Privacy & Biometrics</Text>
                 <ChevronRightIcon />
               </Pressable>
               
@@ -148,15 +171,7 @@ export default function SettingsScreen() {
               
               <Pressable style={styles.row}>
                 <KeyIcon />
-                <Text style={styles.rowLabel}>Change Master Password</Text>
-                <ChevronRightIcon />
-              </Pressable>
-              
-              <View style={styles.divider} />
-              
-              <Pressable style={styles.row}>
-                <PhoneLinkRingIcon />
-                <Text style={styles.rowLabel}>View Recovery Key</Text>
+                <Text style={styles.rowLabel}>Update Master Password</Text>
                 <ChevronRightIcon />
               </Pressable>
             </View>
@@ -166,119 +181,41 @@ export default function SettingsScreen() {
           <View style={styles.sectionGroup}>
             <Text style={styles.groupTitle}>SYNC & BACKUP</Text>
             <View style={styles.groupCard}>
-              <Pressable style={styles.row} onPress={() => router.push('/settings/sync')}>
+              <Pressable style={styles.row} onPress={() => refetch()}>
                 <View style={styles.rowTextCol}>
-                  <Text style={styles.rowLabel}>Cloud Sync</Text>
-                  <Text style={styles.rowSubLabel}>On · Last synced 2m ago</Text>
+                  <Text style={styles.rowLabel}>Cloud Synchronization</Text>
+                  <Text style={styles.rowSubLabel}>E2EE Sync Active</Text>
                 </View>
-                {/* Simulated Custom Switch tracking design */}
-                <View style={styles.switchTrack}>
-                  <View style={styles.switchThumb} />
-                </View>
-              </Pressable>
-              
-              <View style={styles.divider} />
-              
-              <Pressable style={styles.row}>
-                <Text style={styles.rowLabel}>Sync Now</Text>
                 <SyncIcon />
-              </Pressable>
-              
-              <View style={styles.divider} />
-              
-              <Pressable style={styles.row}>
-                <Text style={styles.rowLabel}>Export Encrypted Backup</Text>
-                <DownloadIcon />
-              </Pressable>
-              
-              <View style={styles.divider} />
-              
-              <Pressable style={styles.row}>
-                <Text style={styles.rowLabel}>Import from Backup</Text>
-                <UploadIcon />
-              </Pressable>
-            </View>
-          </View>
-
-          {/* ── App Settings ── */}
-          <View style={styles.sectionGroup}>
-            <Text style={styles.groupTitle}>APP SETTINGS</Text>
-            <View style={styles.groupCard}>
-              <Pressable style={styles.row}>
-                <Text style={styles.rowLabel}>Auto-Lock Timeout</Text>
-                <Text style={styles.rowValue}>5 minutes</Text>
-                <ChevronRightIcon />
-              </Pressable>
-              
-              <View style={styles.divider} />
-              
-              <Pressable style={styles.row}>
-                <Text style={styles.rowLabel}>Theme</Text>
-                <Text style={styles.rowValue}>Dark</Text>
-                <ChevronRightIcon />
-              </Pressable>
-              
-              <View style={styles.divider} />
-              
-              <Pressable style={styles.row}>
-                <Text style={styles.rowLabel}>Default Folder</Text>
-                <ChevronRightIcon />
-              </Pressable>
-              
-              <View style={styles.divider} />
-              
-              <Pressable style={styles.row}>
-                <Text style={styles.rowLabel}>Font Size</Text>
-                <ChevronRightIcon />
               </Pressable>
             </View>
           </View>
 
           {/* ── About ── */}
           <View style={styles.sectionGroup}>
-            <Text style={styles.groupTitle}>ABOUT</Text>
+            <Text style={styles.groupTitle}>ABOUT SECUREMEMO</Text>
             <View style={styles.groupCard}>
-              <View style={styles.row}>
-                <Text style={styles.rowLabel}>Version</Text>
-                <Text style={styles.rowValue}>1.0.0</Text>
-              </View>
-              
-              <View style={styles.divider} />
-              
-              <Pressable style={styles.row}>
-                <Text style={styles.rowLabel}>Privacy Policy</Text>
-              </Pressable>
-              
-              <View style={styles.divider} />
-              
-              <Pressable style={styles.row}>
-                <Text style={styles.rowLabel}>Open Source Licenses</Text>
-              </Pressable>
-              
-              <View style={styles.divider} />
-              
-              <Pressable style={styles.row} onPress={() => router.push('/trash')}>
+              <Pressable style={styles.row} onPress={() => router.push('/(app)/trash')}>
                 <Text style={styles.rowLabel}>Trash</Text>
                 <ChevronRightIcon />
               </Pressable>
-
-              <View style={styles.divider} />
-              
-              <Pressable style={styles.row}>
-                <Text style={styles.rowLabel}>Contact Support</Text>
-              </Pressable>
+-             <View style={styles.divider} />
+              <View style={styles.row}>
+                <Text style={styles.rowLabel}>App Version</Text>
+                <Text style={styles.rowValue}>1.0.0-PRO</Text>
+              </View>
             </View>
           </View>
 
           {/* ── Sign Out ── */}
           <View style={styles.signOutSection}>
-            <Pressable style={styles.signOutButton}>
+            <Pressable style={styles.signOutButton} onPress={handleSignOut}>
               <LogoutIcon />
-              <Text style={styles.signOutText}>Sign Out</Text>
+              <Text style={styles.signOutText}>Secure Sign Out</Text>
             </Pressable>
-            <Pressable style={styles.deleteAccountButton}>
-              <Text style={styles.deleteAccountText}>Delete Account</Text>
-            </Pressable>
+            <Text style={styles.disclaimerText}>
+              Signing out will wipe all session keys. You will need your master password to re-unlock the vault.
+            </Text>
           </View>
 
         </View>
@@ -296,13 +233,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 100, // accommodate bottom tab bar
+    paddingBottom: 100,
   },
-
-  /* Header */
   header: {
     paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'ios' ? 48 : 32,
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
     paddingBottom: 8,
   },
   headerTop: {
@@ -313,17 +248,17 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 28,
-    color: '#f0f4f8', // textLight
+    color: '#f0f4f8',
+    fontWeight: '600',
   },
   iconButton: {
     padding: 4,
   },
   subtitle: {
     fontSize: 13,
-    color: COLORS.textDim,
+    color: '#94a3b8',
+    marginTop: 4,
   },
-
-  /* User Info Card */
   userInfoSection: {
     paddingHorizontal: 16,
     paddingVertical: 16,
@@ -331,7 +266,7 @@ const styles = StyleSheet.create({
   userInfoCard: {
     backgroundColor: COLORS.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: 'rgba(51,65,85,0.5)',
     borderRadius: BORDER_RADIUS.xl,
     padding: 16,
     flexDirection: 'row',
@@ -342,7 +277,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(13, 115, 119, 0.2)', // accent-teal/20
+    backgroundColor: 'rgba(13, 115, 119, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -364,40 +299,41 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: COLORS.textLight,
+    maxWidth: '70%',
   },
   accountLink: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 13,
+    fontWeight: '600',
     color: COLORS.vaultTeal,
   },
   vaultCreated: {
     fontSize: 12,
-    color: COLORS.textDim,
+    color: '#64748b',
   },
-
-  /* Sections */
   sectionsContainer: {
     paddingHorizontal: 16,
     gap: 24,
+    marginTop: 8,
   },
   sectionGroup: {},
   groupTitle: {
     fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 0.5,
-    color: COLORS.footerText, // uppercase subtitle
+    letterSpacing: 1.2,
+    color: '#64748b',
     paddingHorizontal: 8,
     marginBottom: 8,
+    textTransform: 'uppercase',
   },
   groupCard: {
     backgroundColor: COLORS.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: 'rgba(51,65,85,0.4)',
     borderRadius: BORDER_RADIUS.xl,
     overflow: 'hidden',
   },
   row: {
-    height: 52,
+    height: 56,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
@@ -410,42 +346,22 @@ const styles = StyleSheet.create({
   },
   rowValue: {
     fontSize: 13,
-    color: COLORS.textDim,
+    color: '#64748b',
   },
   divider: {
     height: 1,
-    backgroundColor: COLORS.border,
+    backgroundColor: 'rgba(51,65,85,0.3)',
   },
-
-  /* Specialized Row Parts */
   rowTextCol: {
     flex: 1,
     justifyContent: 'center',
   },
   rowSubLabel: {
     fontSize: 11,
-    color: COLORS.textDim,
+    color: COLORS.vaultTeal,
     marginTop: 2,
+    fontWeight: '500',
   },
-  
-  /* Mock Custom Switch */
-  switchTrack: {
-    width: 40,
-    height: 20,
-    backgroundColor: COLORS.vaultTeal,
-    borderRadius: 10,
-    justifyContent: 'center',
-  },
-  switchThumb: {
-    position: 'absolute',
-    right: 2,
-    width: 16,
-    height: 16,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-  },
-
-  /* Sign Out Section */
   signOutSection: {
     paddingTop: 16,
     paddingBottom: 32,
@@ -457,24 +373,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     width: '100%',
-    height: 52,
-    backgroundColor: COLORS.surface,
+    height: 56,
+    backgroundColor: 'rgba(239, 68, 68, 0.05)',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: 'rgba(239, 68, 68, 0.2)',
     borderRadius: BORDER_RADIUS.xl,
   },
   signOutText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
-    color: '#ef4444', // accent-red
+    color: '#ef4444',
   },
-  deleteAccountButton: {
+  disclaimerText: {
+    fontSize: 12,
+    color: '#64748b',
+    textAlign: 'center',
     marginTop: 16,
-    padding: 8,
-  },
-  deleteAccountText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: 'rgba(239, 68, 68, 0.7)', // accent-red/70
+    lineHeight: 18,
+    paddingHorizontal: 20,
   },
 });

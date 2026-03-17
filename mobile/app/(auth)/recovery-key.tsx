@@ -6,14 +6,18 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useMutation } from '@apollo/client';
 import { Svg, Path } from 'react-native-svg';
 import * as Clipboard from 'expo-clipboard';
 import { COLORS, SPACING, BORDER_RADIUS } from '../../src/theme';
 import { LinearGradient } from 'expo-linear-gradient';
+import { SETUP_VAULT } from '../../src/graphql/mutations';
 
-// Icons
+/* ── Icons ── */
 function BackIcon() {
   return (
     <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={COLORS.textMuted} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -60,26 +64,59 @@ function ShieldIcon() {
 
 export default function RecoveryKeyScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ recoveryPhrase: string }>();
+  const params = useLocalSearchParams<{ vaultResult: string }>();
 
   const [isRevealed, setIsRevealed] = useState(false);
   const [isConfirmed, setIsConfirmed] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const vaultResult = useMemo(() => {
+    try {
+      return JSON.parse(params.vaultResult || '{}');
+    } catch {
+      return {};
+    }
+  }, [params.vaultResult]);
 
   const words = useMemo(() => {
-    const phrase = params.recoveryPhrase || '';
+    const phrase = vaultResult.recoveryPhrase || '';
     return phrase.split(' ').filter(Boolean);
-  }, [params.recoveryPhrase]);
+  }, [vaultResult]);
+
+  const [setupVaultMutation] = useMutation(SETUP_VAULT);
 
   const handleCopyAll = async () => {
-    if (params.recoveryPhrase) {
-      await Clipboard.setStringAsync(params.recoveryPhrase);
+    if (vaultResult.recoveryPhrase) {
+      await Clipboard.setStringAsync(vaultResult.recoveryPhrase);
       Alert.alert('Copied', 'Recovery key copied to clipboard. Paste it somewhere safe and clear your clipboard.');
     }
   };
 
-  const handleContinue = () => {
-    // Navigate to the main app
-    router.replace('/(app)');
+  const handleContinue = async () => {
+    if (!isConfirmed || isLoading) return;
+
+    setIsLoading(true);
+    try {
+      await setupVaultMutation({
+        variables: {
+          input: {
+            encryptedVaultKey: vaultResult.encryptedVaultKey,
+            argon2Salt: vaultResult.argon2Salt,
+            argon2Memory: vaultResult.argon2Memory,
+            argon2Iterations: vaultResult.argon2Iterations,
+            argon2Parallelism: vaultResult.argon2Parallelism,
+            encryptedRecoveryKey: vaultResult.encryptedRecoveryKey,
+            recoveryKeySalt: vaultResult.recoveryKeySalt,
+          }
+        }
+      });
+
+      router.replace('/(app)');
+    } catch (err: any) {
+      Alert.alert('Setup Failed', err.message || 'An error occurred during vault registration.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -90,7 +127,7 @@ export default function RecoveryKeyScreen() {
           <BackIcon />
         </Pressable>
         <Text style={styles.headerTitle}>VAULT SECURITY</Text>
-        <View style={{ width: 24 }} />
+        <View style={{ width: 40 }} />
       </View>
 
       {/* Warning Banner */}
@@ -107,10 +144,10 @@ export default function RecoveryKeyScreen() {
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
         {/* Recovery Phrase Card */}
         <View style={styles.phraseCard}>
-          {/* Card Header */}
           <View style={styles.cardHeader}>
             <Text style={styles.cardHeaderLabel}>YOUR RECOVERY KEY</Text>
             <View style={styles.cardHeaderActions}>
@@ -121,18 +158,14 @@ export default function RecoveryKeyScreen() {
             </View>
           </View>
 
-          {/* Word Grid */}
           <View style={styles.wordGrid}>
-            {words.map((word, index) => (
+            {words.map((word: string, index: number) => (
               <View key={index} style={styles.wordCell}>
-                <Text style={styles.wordNumber}>
-                  {String(index + 1).padStart(2, '0')}
-                </Text>
+                <Text style={styles.wordNumber}>{String(index + 1).padStart(2, '0')}</Text>
                 <Text style={styles.wordText}>{word}</Text>
               </View>
             ))}
 
-            {/* Blur Overlay */}
             {!isRevealed && (
               <Pressable
                 style={styles.blurOverlay}
@@ -145,7 +178,6 @@ export default function RecoveryKeyScreen() {
           </View>
         </View>
 
-        {/* Confirmation Checkbox */}
         <Pressable
           style={styles.checkboxRow}
           onPress={() => setIsConfirmed(!isConfirmed)}
@@ -164,7 +196,7 @@ export default function RecoveryKeyScreen() {
         <Pressable
           style={[styles.continueButton, !isConfirmed && styles.continueButtonDisabled]}
           onPress={handleContinue}
-          disabled={!isConfirmed}
+          disabled={!isConfirmed || isLoading}
         >
           <LinearGradient
             colors={isConfirmed
@@ -175,7 +207,9 @@ export default function RecoveryKeyScreen() {
             end={{ x: 1, y: 0.5 }}
             style={styles.continueButtonGradient}
           >
-            <Text style={styles.continueButtonText}>I've saved my recovery key</Text>
+            {isLoading ? <ActivityIndicator color="#fff" /> : (
+              <Text style={styles.continueButtonText}>I've saved my recovery key</Text>
+            )}
           </LinearGradient>
         </Pressable>
 
@@ -199,9 +233,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: SPACING.lg,
-    paddingTop: 56,
-    paddingBottom: SPACING.lg,
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    paddingBottom: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(51,65,85,0.5)',
   },
@@ -218,13 +252,13 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
   warningBanner: {
-    backgroundColor: COLORS.amberBg,
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
     borderLeftWidth: 4,
     borderLeftColor: COLORS.amber,
-    paddingVertical: SPACING.lg,
-    paddingHorizontal: SPACING.xl,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
     flexDirection: 'row',
-    gap: SPACING.lg,
+    gap: 16,
     alignItems: 'flex-start',
   },
   warningContent: {
@@ -232,44 +266,44 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   warningTitle: {
-    fontSize: 20,
+    fontSize: 18,
     color: COLORS.amber,
-    fontWeight: '400',
+    fontWeight: '600',
   },
   warningDescription: {
     fontSize: 13,
-    color: COLORS.amberDark,
+    color: 'rgba(245, 158, 11, 0.8)',
     lineHeight: 20,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: SPACING.lg,
-    gap: SPACING['2xl'],
+    padding: 20,
+    gap: 24,
   },
   phraseCard: {
     backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.xl,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: COLORS.border,
-    padding: SPACING['2xl'],
+    padding: 24,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING['2xl'],
+    marginBottom: 24,
   },
   cardHeaderLabel: {
-    fontSize: 13,
+    fontSize: 12,
     color: COLORS.textDim,
-    fontWeight: '500',
+    fontWeight: '600',
     letterSpacing: 1.5,
   },
   cardHeaderActions: {
     flexDirection: 'row',
-    gap: SPACING.lg,
+    gap: 16,
   },
   actionButton: {
     flexDirection: 'row',
@@ -284,52 +318,53 @@ const styles = StyleSheet.create({
   wordGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: SPACING.md,
+    gap: 12,
     position: 'relative',
   },
   wordCell: {
     width: '47%',
-    backgroundColor: COLORS.vaultGlow,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    padding: 12,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(51,65,85,0.3)',
+    borderColor: 'rgba(255,255,255,0.05)',
   },
   wordNumber: {
-    fontSize: 11,
+    fontSize: 10,
     color: COLORS.footerText,
     marginBottom: 4,
+    fontWeight: '600',
   },
   wordText: {
-    fontSize: 15,
+    fontSize: 16,
     color: COLORS.textLight,
     fontWeight: '700',
   },
   blurOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(17,24,39,0.85)',
-    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: 'rgba(10,10,15,0.95)',
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.sm,
+    gap: 8,
   },
   revealText: {
     fontSize: 14,
-    color: COLORS.textDim,
+    color: COLORS.textMuted,
     fontWeight: '500',
   },
   checkboxRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: SPACING.lg,
-    paddingHorizontal: SPACING.sm,
+    gap: 16,
+    paddingHorizontal: 4,
   },
   checkbox: {
     width: 24,
     height: 24,
-    borderRadius: 12,
+    borderRadius: 6,
     borderWidth: 2,
-    borderColor: 'rgba(51,65,85,1)',
+    borderColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2,
@@ -339,9 +374,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.vaultTeal,
   },
   checkmark: {
-    color: '#FFFFFF',
+    color: '#000',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   checkboxLabel: {
     flex: 1,
@@ -350,45 +385,38 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   footer: {
-    paddingHorizontal: SPACING['2xl'],
-    paddingBottom: SPACING['3xl'],
-    paddingTop: SPACING.lg,
-    gap: SPACING['2xl'],
+    paddingHorizontal: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    paddingTop: 16,
+    gap: 20,
   },
   continueButton: {
-    borderRadius: BORDER_RADIUS.lg,
+    borderRadius: 16,
     overflow: 'hidden',
-    shadowColor: COLORS.vaultTeal,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 6,
   },
   continueButtonDisabled: {
-    shadowOpacity: 0,
-    elevation: 0,
+    opacity: 0.5,
   },
   continueButtonGradient: {
     height: 56,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: BORDER_RADIUS.lg,
   },
   continueButtonText: {
-    color: '#FFFFFF',
+    color: '#000',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   securityNote: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.sm,
+    gap: 8,
     opacity: 0.6,
   },
   securityNoteText: {
     fontSize: 12,
-    color: COLORS.darkGray,
+    color: COLORS.footerText,
     textAlign: 'center',
   },
 });

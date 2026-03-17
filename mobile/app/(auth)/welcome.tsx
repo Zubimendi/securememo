@@ -1,5 +1,15 @@
-import React, { useEffect } from 'react';
-import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  Dimensions,
+  TextInput,
+  ActivityIndicator,
+  Alert,
+  Platform,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import Animated, {
   useSharedValue,
@@ -14,6 +24,7 @@ import { Svg, Path } from 'react-native-svg';
 import SecurityBadge from '../../src/components/SecurityBadge';
 import { COLORS, SPACING, BORDER_RADIUS } from '../../src/theme';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useAuth } from '../../src/providers/AuthProvider';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -30,6 +41,12 @@ function LockIcon() {
 
 export default function WelcomeScreen() {
   const router = useRouter();
+  const { signIn, signUp, isLoading: authLoading } = useAuth();
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSigningIn, setIsSigningIn] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   // Animation values
   const shieldScale = useSharedValue(0.9);
@@ -46,27 +63,17 @@ export default function WelcomeScreen() {
   const pulseOpacity = useSharedValue(0.5);
 
   useEffect(() => {
-    // Shield fade-in-scale
     shieldScale.value = withTiming(1, { duration: 1000, easing: Easing.out(Easing.cubic) });
     shieldOpacity.value = withTiming(1, { duration: 1000 });
-
-    // Title fade-in-up
     titleTranslateY.value = withDelay(300, withTiming(0, { duration: 800, easing: Easing.out(Easing.cubic) }));
     titleOpacity.value = withDelay(300, withTiming(1, { duration: 800 }));
-
-    // Tagline fade-in-up
     taglineTranslateY.value = withDelay(500, withTiming(0, { duration: 800, easing: Easing.out(Easing.cubic) }));
     taglineOpacity.value = withDelay(500, withTiming(1, { duration: 800 }));
-
-    // CTA fade-in-up
     ctaTranslateY.value = withDelay(700, withTiming(0, { duration: 800, easing: Easing.out(Easing.cubic) }));
     ctaOpacity.value = withDelay(700, withTiming(1, { duration: 800 }));
-
-    // Trust badges fade-in-up
     trustTranslateY.value = withDelay(1000, withTiming(0, { duration: 800, easing: Easing.out(Easing.cubic) }));
     trustOpacity.value = withDelay(1000, withTiming(1, { duration: 800 }));
 
-    // Pulse ring animation — repeating
     pulseScale.value = withRepeat(
       withSequence(
         withTiming(0.8, { duration: 0 }),
@@ -115,36 +122,68 @@ export default function WelcomeScreen() {
     opacity: pulseOpacity.value,
   }));
 
+  const handleAuthAction = async () => {
+    if (!email || !password) return;
+    setLoading(true);
+
+    try {
+      const { error } = isSigningIn 
+        ? await signIn(email, password)
+        : await signUp(email, password);
+
+      if (error) {
+        Alert.alert('Authentication Failed', error.message);
+      } else {
+        // Router will auto-redirect from app/index.tsx based on new auth session
+      }
+    } catch {
+      Alert.alert('Error', 'An unexpected error occurred.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       {/* Header Content */}
       <View style={styles.headerSection}>
-        {/* Shield Icon with Pulse */}
         <View style={styles.shieldWrapper}>
-          {/* Pulse Ring */}
           <Animated.View style={[styles.pulseRing, pulseStyle]} />
-
-          {/* Hexagonal Shield */}
           <Animated.View style={[styles.hexShield, shieldStyle]}>
             <LockIcon />
           </Animated.View>
         </View>
 
-        {/* App Identity */}
-        <Animated.Text style={[styles.title, titleStyle]}>
-          SecureMemo
-        </Animated.Text>
-        <Animated.Text style={[styles.tagline, taglineStyle]}>
-          Your notes. Yours alone.
-        </Animated.Text>
+        <Animated.Text style={[styles.title, titleStyle]}>SecureMemo</Animated.Text>
+        <Animated.Text style={[styles.tagline, taglineStyle]}>Your notes. Yours alone.</Animated.Text>
       </View>
 
-      {/* Action Area */}
+      {/* Auth Area */}
       <Animated.View style={[styles.actionSection, ctaStyle]}>
-        {/* Primary Button — Create Vault */}
+        <View style={styles.formContainer}>
+          <TextInput
+            style={styles.input}
+            placeholder="Email address"
+            placeholderTextColor={COLORS.textDim}
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Password"
+            placeholderTextColor={COLORS.textDim}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
+        </View>
+
         <Pressable
           style={styles.primaryButton}
-          onPress={() => router.push('/(auth)/create-vault')}
+          onPress={handleAuthAction}
+          disabled={loading}
         >
           <LinearGradient
             colors={[COLORS.vaultTeal, COLORS.vaultTealDark]}
@@ -152,19 +191,21 @@ export default function WelcomeScreen() {
             end={{ x: 1, y: 0 }}
             style={styles.primaryButtonGradient}
           >
-            <Text style={styles.primaryButtonText}>Create Vault</Text>
+            {loading ? <ActivityIndicator color="#FFF" /> : (
+              <Text style={styles.primaryButtonText}>{isSigningIn ? 'Sign In' : 'Create Account'}</Text>
+            )}
           </LinearGradient>
         </Pressable>
 
-        {/* Secondary Button — Already have a vault */}
         <Pressable
           style={styles.secondaryButton}
-          onPress={() => router.push('/(auth)/unlock')}
+          onPress={() => setIsSigningIn(!isSigningIn)}
         >
-          <Text style={styles.secondaryButtonText}>I already have a vault</Text>
+          <Text style={styles.secondaryButtonText}>
+            {isSigningIn ? "Don't have an account? Sign Up" : "Already have an account? Sign In"}
+          </Text>
         </Pressable>
 
-        {/* Trust Indicators */}
         <Animated.View style={trustStyle}>
           <SecurityBadge />
         </Animated.View>
@@ -178,92 +219,93 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.vaultBlack,
     justifyContent: 'space-between',
-    paddingTop: 120,
-    paddingBottom: SPACING['5xl'],
-    paddingHorizontal: SPACING['3xl'],
+    paddingTop: Platform.OS === 'ios' ? 80 : 60,
+    paddingBottom: 48,
+    paddingHorizontal: 32,
   },
   headerSection: {
     alignItems: 'center',
   },
   shieldWrapper: {
-    width: 96,
-    height: 96,
+    width: 120,
+    height: 120,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: SPACING['4xl'],
+    marginBottom: 32,
   },
   pulseRing: {
     position: 'absolute',
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    borderWidth: 1,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 2,
     borderColor: COLORS.vaultTeal,
   },
   hexShield: {
-    width: 96,
-    height: 96,
-    backgroundColor: COLORS.vaultBlack,
-    borderWidth: 1,
-    borderColor: 'rgba(51,65,85,0.8)',
+    width: 80,
+    height: 80,
+    backgroundColor: 'rgba(13, 115, 119, 0.1)',
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    // Hexagonal shape approximation using border radius
-    borderRadius: 20,
-    shadowColor: COLORS.vaultTeal,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 15,
-    elevation: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(13, 115, 119, 0.3)',
   },
   title: {
-    fontSize: 36,
+    fontSize: 42,
+    fontWeight: '700',
     color: COLORS.textLight,
-    fontWeight: '400',
-    letterSpacing: -0.5,
+    letterSpacing: -1,
+    marginBottom: 8,
   },
   tagline: {
-    fontSize: 16,
-    color: COLORS.textDim,
-    marginTop: SPACING.md,
-    letterSpacing: 1.3,
-    textTransform: 'uppercase',
-    fontWeight: '400',
+    fontSize: 18,
+    color: COLORS.textMuted,
+    textAlign: 'center',
   },
   actionSection: {
+    gap: 16,
+    alignItems: 'center',
     width: '100%',
-    gap: SPACING.lg,
+  },
+  formContainer: {
+    width: '100%',
+    gap: 12,
+    marginBottom: 8,
+  },
+  input: {
+    width: '100%',
+    height: 56,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.lg,
+    paddingHorizontal: 16,
+    color: COLORS.textLight,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   primaryButton: {
-    borderRadius: BORDER_RADIUS.xl,
+    width: '100%',
+    height: 56,
+    borderRadius: BORDER_RADIUS.lg,
     overflow: 'hidden',
-    shadowColor: COLORS.vaultTeal,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
-    elevation: 8,
   },
   primaryButtonGradient: {
-    height: 56,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: BORDER_RADIUS.xl,
   },
   primaryButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
   },
   secondaryButton: {
-    height: 48,
-    borderRadius: BORDER_RADIUS.xl,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingVertical: 12,
   },
   secondaryButtonText: {
-    color: COLORS.textMuted,
-    fontSize: 15,
+    color: COLORS.vaultTeal,
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

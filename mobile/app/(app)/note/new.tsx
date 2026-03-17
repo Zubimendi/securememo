@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,13 +8,20 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useMutation } from '@apollo/client';
 import { Svg, Path, Line } from 'react-native-svg';
 import { COLORS, SPACING, BORDER_RADIUS } from '../../../src/theme';
+import { useNotesStore } from '../../../src/store/notesStore';
+import { useVaultStore } from '../../../src/store/vaultStore';
 import EncryptionStatusBar from '../../../src/components/EncryptionStatusBar';
 import FormattingToolbar from '../../../src/components/FormattingToolbar';
 import TagChip from '../../../src/components/TagChip';
+import { CREATE_NOTE } from '../../../src/graphql/mutations';
+import { GET_NOTES } from '../../../src/graphql/queries';
 
 /* ── Icons ── */
 
@@ -46,17 +53,67 @@ function AddIcon() {
 
 export default function NewNoteScreen() {
   const router = useRouter();
+  const { vaultKey } = useVaultStore();
+  const { encryptNote, decryptNote, addNote } = useNotesStore();
 
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [tags, setTags] = useState<string[]>([]);
+  const [folder, setFolder] = useState<string | null>(null);
   const [activeFormat, setActiveFormat] = useState<string | undefined>(undefined);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const [createNoteMutation] = useMutation(CREATE_NOTE, {
+    refetchQueries: [{ query: GET_NOTES, variables: { limit: 100 } }],
+  });
 
   const wordCount = body.trim() ? body.trim().split(/\s+/).length : 0;
 
-  const handleBack = useCallback(() => {
+  const handleBack = useCallback(async () => {
+    // Auto-save if there is content
+    if ((title.trim() || body.trim()) && vaultKey && !isSaving) {
+      await handleSave();
+    }
     router.back();
-  }, [router]);
+  }, [router, title, body, vaultKey, isSaving]);
+
+  const handleSave = async () => {
+    if (!vaultKey) return;
+    if (!title.trim() && !body.trim()) return;
+
+    setIsSaving(true);
+    try {
+      const payload = await encryptNote({
+        title: title.trim() || 'Untitled',
+        content: body,
+        folder,
+        tags,
+      }, vaultKey);
+
+      const { data } = await createNoteMutation({
+        variables: {
+          input: {
+            encryptedTitle: payload.encryptedTitle,
+            encryptedContent: payload.encryptedContent,
+            encryptedFolder: payload.encryptedFolder,
+            encryptedTags: payload.encryptedTags,
+            contentHash: payload.contentHash,
+            byteSize: payload.byteSize,
+          }
+        }
+      });
+
+      if (data?.createNote) {
+        const decrypted = await decryptNote(data.createNote, vaultKey);
+        addNote(decrypted);
+      }
+    } catch (err: any) {
+      console.error('Save failed:', err);
+      Alert.alert('Save Failed', err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <KeyboardAvoidingView
@@ -69,17 +126,20 @@ export default function NewNoteScreen() {
           <BackIcon />
         </Pressable>
 
-        <View style={styles.folderChip}>
-          <Text style={styles.folderChipText}>Uncategorized</Text>
-        </View>
-
-        <Pressable style={styles.headerButton}>
-          <MoreIcon />
+        <Pressable style={styles.folderChip} onPress={() => {/* Change folder */}}>
+          <Text style={styles.folderChipText}>{folder || 'Uncategorized'}</Text>
         </Pressable>
+
+        <View style={styles.headerActions}>
+          {isSaving && <ActivityIndicator size="small" color={COLORS.vaultTeal} style={{ marginRight: 8 }} />}
+          <Pressable style={styles.headerButton}>
+            <MoreIcon />
+          </Pressable>
+        </View>
       </View>
 
       {/* ── Encryption Status ── */}
-      <EncryptionStatusBar saved={false} label="🔐 Encrypting..." />
+      <EncryptionStatusBar saved={!isSaving} label={isSaving ? "🔐 Encrypting..." : "🔐 End-to-End Encrypted"} />
 
       {/* ── Editor Area ── */}
       <ScrollView
@@ -110,7 +170,7 @@ export default function NewNoteScreen() {
         )}
 
         {/* Add tag button */}
-        <Pressable style={styles.addTagRow}>
+        <Pressable style={styles.addTagRow} onPress={() => {/* Add tag logic */}}>
           <AddIcon />
           <Text style={styles.addTagText}>Add tag</Text>
         </Pressable>
@@ -149,19 +209,22 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.vaultBlack,
   },
-
-  /* Header */
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
-    height: 56,
+    paddingTop: Platform.OS === 'ios' ? 44 : 0,
+    height: Platform.OS === 'ios' ? 100 : 56,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.border,
   },
   headerButton: {
     padding: SPACING.sm,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   folderChip: {
     backgroundColor: COLORS.surface,
@@ -176,8 +239,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: COLORS.textMuted,
   },
-
-  /* Editor */
   editorScroll: {
     flex: 1,
   },
@@ -214,7 +275,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 25.6,
     color: COLORS.textMuted,
-    minHeight: 400,
+    minHeight:Platform.OS === 'ios' ? 400 : 300,
     padding: 0,
   },
   metadataFooter: {

@@ -74,10 +74,10 @@ export default function CreateVaultScreen() {
     try {
       const result = await createVault(masterPassword);
 
-      // Navigate to recovery key screen with the phrase
+      // Navigate to recovery key screen with the phrase and encrypted config
       router.push({
         pathname: '/(auth)/recovery-key',
-        params: { recoveryPhrase: result.recoveryPhrase },
+        params: { vaultResult: JSON.stringify(result) },
       });
     } catch (error) {
       Alert.alert(

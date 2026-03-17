@@ -12,9 +12,10 @@ import (
 type contextKey string
 
 const UserIDKey contextKey = "userID"
+const UserEmailKey contextKey = "userEmail"
 
 // ValidateSupabaseJWT middleware extracts and validates the Supabase JWT.
-// The user ID is injected into the request context for resolvers to use.
+// The user ID and email are injected into the request context.
 func ValidateSupabaseJWT(jwtSecret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -54,10 +55,21 @@ func ValidateSupabaseJWT(jwtSecret string) func(http.Handler) http.Handler {
 				return
 			}
 
+			email, _ := claims["email"].(string)
+
 			ctx := context.WithValue(r.Context(), UserIDKey, userID)
+			if email != "" {
+				ctx = context.WithValue(ctx, UserEmailKey, email)
+			}
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// UserEmailFromContext extracts the authenticated user email from context.
+func UserEmailFromContext(ctx context.Context) string {
+	email, _ := ctx.Value(UserEmailKey).(string)
+	return email
 }
 
 // UserIDFromContext extracts the authenticated user ID from context.

@@ -226,9 +226,49 @@ func (s *SupabaseStore) RestoreNote(ctx context.Context, userID, noteID string) 
 }
 
 func (s *SupabaseStore) EmptyTrash(ctx context.Context, userID string) error {
-	_, err := s.pool.Exec(ctx,
-		`DELETE FROM notes WHERE user_id = $1 AND deleted = true`, userID)
-	return err
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// Get IDs of notes to be deleted for tombstones
+	rows, err := tx.Query(ctx, `SELECT id FROM notes WHERE user_id = $1 AND deleted = true`, userID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		ids = append(ids, id)
+	}
+
+	if len(ids) == 0 {
+		return nil
+	}
+
+	// Delete notes
+	_, err = tx.Exec(ctx, `DELETE FROM notes WHERE user_id = $1 AND deleted = true`, userID)
+	if err != nil {
+		return err
+	}
+
+	// Insert tombstones
+	for _, id := range ids {
+		_, err = tx.Exec(ctx,
+			`INSERT INTO deleted_note_tombstones (user_id, note_id) VALUES ($1, $2)
+			 ON CONFLICT DO NOTHING`, userID, id)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit(ctx)
 }
 
 func (s *SupabaseStore) GetNote(ctx context.Context, userID, noteID string) (*Note, error) {

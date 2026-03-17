@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import Animated, {
@@ -20,8 +21,11 @@ import Animated, {
 import { Svg, Path, Circle } from 'react-native-svg';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { COLORS, SPACING, BORDER_RADIUS } from '../../src/theme';
-import { getVaultKey, isVaultSetup } from '../../src/crypto/vault';
+import { getVaultKey, unlockVault } from '../../src/crypto/vault';
 import { useVaultStore } from '../../src/store/vaultStore';
+import { useQuery } from '@apollo/client';
+import { GET_VAULT_CONFIG } from '../../src/graphql/queries';
+import { useAuth } from '../../src/providers/AuthProvider';
 
 // Icons
 function FingerprintIcon() {
@@ -50,12 +54,15 @@ function LockKeyIcon() {
 export default function UnlockScreen() {
   const router = useRouter();
   const { unlock } = useVaultStore();
+  const { signOut } = useAuth();
 
   const [showPasswordInput, setShowPasswordInput] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [lockedAgo, setLockedAgo] = useState('just now');
+  const [isUnlocking, setIsUnlocking] = useState(false);
   const [biometricsAvailable, setBiometricsAvailable] = useState(false);
+
+  // Fetch vault config from backend
+  const { data: configData, loading: configLoading, error: configError } = useQuery(GET_VAULT_CONFIG);
 
   // Pulse glow animation
   const glowIntensity = useSharedValue(10);
@@ -70,8 +77,12 @@ export default function UnlockScreen() {
       false
     );
 
-    // Check biometrics availability
     checkBiometrics();
+    
+    // Automatically trigger biometric unlock if available
+    setTimeout(() => {
+        if (!showPasswordInput) handleBiometricUnlock();
+    }, 500);
   }, []);
 
   const glowStyle = useAnimatedStyle(() => ({
@@ -86,69 +97,95 @@ export default function UnlockScreen() {
   };
 
   const handleBiometricUnlock = async () => {
+    if (!biometricsAvailable) return;
+    
     try {
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: 'Unlock SecureMemo',
         fallbackLabel: 'Use Master Password',
         cancelLabel: 'Cancel',
-        disableDeviceFallback: false,
       });
 
       if (result.success) {
-        const vaultKey = await getVaultKey();
-        if (vaultKey) {
-          unlock(vaultKey, '', '');
+        const key = await getVaultKey();
+        if (key) {
+          unlock(key, '', ''); // We don't have salt/params in keychain yet, but the key itself is enough
           router.replace('/(app)');
         } else {
-          Alert.alert('Session Expired', 'Please sign in with your master password.');
           setShowPasswordInput(true);
         }
       }
     } catch {
-      Alert.alert('Biometric Error', 'Unable to authenticate. Please use your master password.');
       setShowPasswordInput(true);
     }
   };
 
   const handlePasswordUnlock = async () => {
-    if (!masterPassword.trim()) return;
+    if (!masterPassword.trim() || !configData?.vaultConfig) return;
 
-    setIsLoading(true);
+    setIsUnlocking(true);
     try {
-      // In production, fetch encryptedVaultKey + argon2 params from backend
-      // For now, try to get the vault key from secure store
-      const vaultKey = await getVaultKey();
-      if (vaultKey) {
-        unlock(vaultKey, '', '');
-        router.replace('/(app)');
-      } else {
-        Alert.alert('Unlock Failed', 'Invalid master password or session expired.');
-      }
-    } catch {
-      Alert.alert('Unlock Failed', 'Could not unlock vault. Please check your password.');
+      const { vaultConfig } = configData;
+      
+      const key = await unlockVault(
+        masterPassword,
+        vaultConfig.encryptedVaultKey,
+        vaultConfig.argon2Salt,
+        {
+          memory: vaultConfig.argon2Memory,
+          iterations: vaultConfig.argon2Iterations,
+          parallelism: vaultConfig.argon2Parallelism
+        }
+      );
+
+      unlock(key, vaultConfig.argon2Salt, ''); // update store
+      router.replace('/(app)');
+    } catch (err: any) {
+      console.error('Unlock failed:', err);
+      Alert.alert('Unlock Failed', 'Incorrect master password or encryption error.');
     } finally {
-      setIsLoading(false);
+      setIsUnlocking(false);
     }
   };
+
+  const handleSignOut = async () => {
+      Alert.alert(
+          "Sign Out",
+          "Are you sure? You'll need to sign back in with your account credentials.",
+          [
+              { text: "Cancel", style: "cancel" },
+              { text: "Sign Out", style: "destructive", onPress: async () => {
+                  await signOut();
+                  router.replace('/(auth)/welcome');
+              }}
+          ]
+      )
+  }
+
+  if (configLoading) {
+      return (
+          <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+              <ActivityIndicator size="large" color={COLORS.vaultTeal} />
+              <Text style={{ color: COLORS.textMuted, marginTop: 16 }}>Connecting to vault...</Text>
+          </View>
+      )
+  }
 
   return (
     <View style={styles.container}>
       {/* Branding Section */}
       <View style={styles.brandingSection}>
-        {/* Hexagonal Shield */}
         <View style={styles.hexShield}>
           <LockKeyIcon />
         </View>
-
         <Text style={styles.title}>SecureMemo</Text>
-        <Text style={styles.subtitle}>YOUR VAULT</Text>
+        <Text style={styles.subtitle}>YOUR VAULT IS LOCKED</Text>
       </View>
 
       {/* Unlock Section */}
       <View style={styles.unlockSection}>
         {!showPasswordInput ? (
           <>
-            {/* Biometric Button */}
             <View style={styles.biometricContainer}>
               <Animated.View style={[styles.biometricButtonShadow, glowStyle]}>
                 <Pressable
@@ -171,7 +208,6 @@ export default function UnlockScreen() {
           </>
         ) : (
           <>
-            {/* Master Password Input */}
             <View style={styles.passwordInputWrapper}>
               <TextInput
                 style={styles.passwordInput}
@@ -189,14 +225,14 @@ export default function UnlockScreen() {
             </View>
 
             <Pressable
-              style={[styles.unlockButton, !masterPassword.trim() && styles.unlockButtonDisabled]}
+              style={[styles.unlockButton, (!masterPassword.trim() || isUnlocking) && styles.unlockButtonDisabled]}
               onPress={handlePasswordUnlock}
-              disabled={!masterPassword.trim() || isLoading}
+              disabled={!masterPassword.trim() || isUnlocking}
             >
-              {isLoading ? (
+              {isUnlocking ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <Text style={styles.unlockButtonText}>Unlock</Text>
+                <Text style={styles.unlockButtonText}>Decrypt Vault</Text>
               )}
             </Pressable>
 
@@ -214,18 +250,17 @@ export default function UnlockScreen() {
 
       {/* Footer Section */}
       <View style={styles.footerSection}>
-        <Pressable>
+        <Pressable onPress={() => router.push('/(auth)/recovery-key')}>
           <Text style={styles.footerLink}>Use recovery key instead</Text>
         </Pressable>
 
-        <Pressable>
-          <Text style={styles.signOutLink}>SIGN OUT</Text>
+        <Pressable onPress={handleSignOut} style={{ marginTop: 12 }}>
+          <Text style={styles.signOutLink}>SIGN OUT ACCOUNT</Text>
         </Pressable>
 
-        {/* Lock Status */}
         <View style={styles.lockStatus}>
-          <View style={styles.lockDot} />
-          <Text style={styles.lockStatusText}>Locked {lockedAgo}</Text>
+          <View style={[styles.lockDot, { backgroundColor: '#ef4444' }]} />
+          <Text style={styles.lockStatusText}>AES-256 Protected</Text>
         </View>
       </View>
     </View>
@@ -241,7 +276,6 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING['3xl'],
     paddingHorizontal: SPACING['2xl'],
   },
-  // Branding
   brandingSection: {
     alignItems: 'center',
     marginTop: SPACING['5xl'],
@@ -269,13 +303,12 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   subtitle: {
-    fontSize: 14,
-    color: COLORS.footerText,
-    fontWeight: '500',
+    fontSize: 12,
+    color: '#94a3b8',
+    fontWeight: '600',
     letterSpacing: 2,
+    textTransform: 'uppercase',
   },
-
-  // Unlock
   unlockSection: {
     alignItems: 'center',
     width: '100%',
@@ -316,9 +349,9 @@ const styles = StyleSheet.create({
   },
   passwordInputWrapper: {
     width: '100%',
-    backgroundColor: COLORS.whiteAlpha5,
+    backgroundColor: 'rgba(255,255,255,0.03)',
     borderWidth: 1,
-    borderColor: COLORS.whiteAlpha10,
+    borderColor: 'rgba(255,255,255,0.08)',
     borderRadius: BORDER_RADIUS.lg,
     height: 56,
     paddingHorizontal: SPACING.lg,
@@ -347,41 +380,44 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.darkGray,
     shadowOpacity: 0,
     elevation: 0,
+    opacity: 0.6,
   },
   unlockButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
   },
-
-  // Footer
   footerSection: {
     alignItems: 'center',
-    gap: SPACING.lg,
+    gap: 8,
     marginBottom: SPACING.lg,
   },
   footerLink: {
     fontSize: 13,
-    color: COLORS.darkGray,
+    color: COLORS.textDim,
   },
   signOutLink: {
-    fontSize: 12,
-    color: COLORS.darkGray,
+    fontSize: 11,
+    color: '#64748b',
     letterSpacing: 2,
+    fontWeight: '600',
   },
   lockStatus: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
+    gap: 8,
+    marginTop: 16,
   },
   lockDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: 'rgba(127,29,29,0.5)',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   lockStatusText: {
-    fontSize: 12,
-    color: COLORS.darkGray,
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '600',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
 });
