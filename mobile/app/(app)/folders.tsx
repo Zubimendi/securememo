@@ -1,8 +1,10 @@
-import React from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
-import { Svg, Path, Rect } from 'react-native-svg';
+import React, { useMemo } from 'react';
+import { View, Text, Pressable, ScrollView, StyleSheet, Platform, Alert } from 'react-native';
+import { Svg, Path } from 'react-native-svg';
+import { useRouter } from 'expo-router';
 import { COLORS, SPACING, BORDER_RADIUS } from '../../src/theme';
 import FolderCard from '../../src/components/FolderCard';
+import { useNotesStore } from '../../src/store/notesStore';
 
 /* ── Icons ── */
 
@@ -30,18 +32,86 @@ function CreateFolderIcon() {
   );
 }
 
+const FOLDER_COLORS = [
+    COLORS.vaultTeal,
+    COLORS.amberAccent,
+    COLORS.rose,
+    COLORS.indigo,
+    COLORS.slate500,
+];
+
 export default function FoldersScreen() {
+  const router = useRouter();
+  const { notes } = useNotesStore();
+
+  const folderStats = useMemo(() => {
+    const stats: Record<string, { count: number, lastUpdate: string }> = {};
+    const activeNotes = notes.filter(n => !n.deleted);
+
+    activeNotes.forEach(note => {
+        if (!note.folder) return;
+        if (!stats[note.folder]) {
+            stats[note.folder] = { count: 0, lastUpdate: note.updatedAt };
+        }
+        stats[note.folder].count++;
+        if (new Date(note.updatedAt) > new Date(stats[note.folder].lastUpdate)) {
+            stats[note.folder].lastUpdate = note.updatedAt;
+        }
+    });
+
+    return Object.entries(stats).map(([name, data], index) => ({
+        name,
+        ...data,
+        color: FOLDER_COLORS[index % FOLDER_COLORS.length]
+    })).sort((a, b) => b.count - a.count);
+  }, [notes]);
+
+  const totalActiveNotes = useMemo(() => notes.filter(n => !n.deleted).length, [notes]);
+
+  const handleCreateFolder = () => {
+      Alert.prompt(
+          'New Folder',
+          'Enter folder name:',
+          [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                  text: 'Create', 
+                  onPress: (folderName: string | undefined) => {
+                      if (folderName?.trim()) {
+                          router.push({
+                              pathname: '/(app)/note/new',
+                              params: { initialFolder: folderName.trim() }
+                          });
+                      }
+                  } 
+              }
+          ]
+      );
+  };
+
+  const getTimeAgo = (dateStr: string) => {
+      const seconds = Math.floor((new Date().getTime() - new Date(dateStr).getTime()) / 1000);
+      if (seconds < 60) return 'Just now';
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      if (days === 1) return 'Yesterday';
+      return `${days}d ago`;
+  };
+
   return (
     <View style={styles.container}>
       {/* ── Header ── */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <Text style={styles.title}>Folders</Text>
-          <Pressable style={styles.addButton}>
+          <Pressable style={styles.addButton} onPress={() => router.push('/(app)/note/new')}>
             <AddIcon />
           </Pressable>
         </View>
-        <Text style={styles.subtitle}>Notes are organized on your device only.</Text>
+        <Text style={styles.subtitle}>E2EE folders group your notes on-device.</Text>
       </View>
 
       <ScrollView
@@ -50,78 +120,56 @@ export default function FoldersScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* ── Global Vault Banner ── */}
-        <Pressable style={styles.vaultBanner}>
+        <Pressable 
+            style={styles.vaultBanner}
+            onPress={() => router.push('/(app)')}
+        >
           <View style={styles.vaultBannerLeft}>
             <View style={styles.vaultIconWrapper}>
               <ShieldLockIcon />
             </View>
             <View>
-              <Text style={styles.vaultTitle}>All Notes</Text>
-              <Text style={styles.vaultSubtitle}>Your entire encrypted vault</Text>
+              <Text style={styles.vaultTitle}>All Items</Text>
+              <Text style={styles.vaultSubtitle}>Primary encrypted vault</Text>
             </View>
           </View>
           <View style={styles.vaultCountBadge}>
-            <Text style={styles.vaultCountText}>47</Text>
+            <Text style={styles.vaultCountText}>{totalActiveNotes}</Text>
           </View>
         </Pressable>
 
         {/* ── Folders Grid ── */}
         <View style={styles.grid}>
-          <View style={styles.gridItem}>
-            <FolderCard
-              name="Work"
-              noteCount={12}
-              accentColor={COLORS.vaultTeal}
-              icon="folder"
-              lastEdited="2m ago"
-            />
-          </View>
-          <View style={styles.gridItem}>
-            <FolderCard
-              name="Personal"
-              noteCount={8}
-              accentColor={COLORS.amberAccent}
-              icon="star"
-              lastEdited="1h ago"
-            />
-          </View>
-          <View style={styles.gridItem}>
-            <FolderCard
-              name="Ideas"
-              noteCount={24}
-              accentColor={COLORS.rose}
-              icon="favorite"
-              lastEdited="Yesterday"
-            />
-          </View>
-          <View style={styles.gridItem}>
-            <FolderCard
-              name="Finance"
-              noteCount={3}
-              accentColor={COLORS.indigo}
-              icon="lock"
-              lastEdited="3d ago"
-            />
-          </View>
-          <View style={styles.gridItem}>
-            <FolderCard
-              name="Archive"
-              noteCount={0}
-              accentColor={COLORS.slate500}
-              icon="archive"
-              lastEdited="-"
-              dimmed
-            />
-          </View>
+          {folderStats.map((folder) => (
+            <View key={folder.name} style={styles.gridItem}>
+              <FolderCard
+                name={folder.name}
+                noteCount={folder.count}
+                accentColor={folder.color}
+                icon="folder"
+                lastEdited={getTimeAgo(folder.lastUpdate)}
+                onPress={() => router.push({
+                   pathname: '/(app)',
+                   params: { folder: folder.name }
+                })}
+              />
+            </View>
+          ))}
 
-          {/* New Folder Button Placeholder */}
+          {/* New Folder Button */}
           <View style={styles.gridItem}>
-            <Pressable style={styles.createFolderContainer}>
+            <Pressable style={styles.createFolderContainer} onPress={handleCreateFolder}>
               <CreateFolderIcon />
-              <Text style={styles.createFolderText}>New Folder</Text>
+              <Text style={styles.createFolderText}>Add Folder</Text>
             </Pressable>
           </View>
         </View>
+
+        {folderStats.length === 0 && (
+            <View style={styles.emptyPrompt}>
+                <Text style={styles.emptyPromptText}>Create a new note and add a folder name to organize your vault.</Text>
+            </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -130,13 +178,11 @@ export default function FoldersScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0c0d14', // Matches the specific HTML hex exactly
+    backgroundColor: COLORS.vaultBlack,
   },
-
-  /* Header */
   header: {
     paddingHorizontal: 24,
-    paddingTop: 48,
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
     paddingBottom: 8,
   },
   headerTop: {
@@ -147,51 +193,47 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     color: COLORS.textLight,
+    fontWeight: '600',
   },
   addButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: COLORS.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: 'rgba(255,255,255,0.05)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   subtitle: {
     fontSize: 13,
     color: COLORS.footerText,
-    marginTop: 4,
+    marginTop: 6,
+    letterSpacing: 0.3,
   },
-
-  /* Scroll Area */
   scrollArea: {
     flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingBottom: 100, // accommodate bottom tab bar
+    paddingBottom: 40,
   },
-
-  /* Vault Banner */
   vaultBanner: {
     backgroundColor: COLORS.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: BORDER_RADIUS.xl,
-    padding: 20,
+    borderColor: 'rgba(51,65,85,0.4)',
+    borderRadius: 20,
+    padding: 24,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 24,
-    marginTop: 16,
-
-    // React Native minimal shadow approaching the 'teal-glow'
+    marginTop: 20,
     shadowColor: COLORS.vaultTeal,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 5,
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 3,
   },
   vaultBannerLeft: {
     flexDirection: 'row',
@@ -201,62 +243,73 @@ const styles = StyleSheet.create({
   vaultIconWrapper: {
     width: 48,
     height: 48,
-    borderRadius: 12,
-    backgroundColor: COLORS.tealAlpha10,
+    borderRadius: 14,
+    backgroundColor: 'rgba(13, 115, 119, 0.1)',
     borderWidth: 1,
-    borderColor: COLORS.tealAlpha20,
+    borderColor: 'rgba(13, 115, 119, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   vaultTitle: {
     fontSize: 18,
+    fontWeight: '700',
     color: COLORS.textLight,
     marginBottom: 2,
   },
   vaultSubtitle: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#64748b',
+    fontWeight: '500',
   },
   vaultCountBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.tealAlpha20,
+    minWidth: 36,
+    height: 36,
+    paddingHorizontal: 8,
+    borderRadius: 18,
+    backgroundColor: 'rgba(13, 115, 119, 0.1)',
     borderWidth: 1,
-    borderColor: COLORS.tealAlpha30,
+    borderColor: 'rgba(13, 115, 119, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   vaultCountText: {
     color: COLORS.vaultTeal,
-    fontWeight: '700',
+    fontWeight: '800',
     fontSize: 14,
   },
-
-  /* Grid Area */
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
   },
   gridItem: {
-    width: '48%', // Rough 2-column layout accounting for gaps
+    width: '48%',
   },
-
-  /* Create Folder Placaholder */
   createFolderContainer: {
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: COLORS.border,
-    borderRadius: BORDER_RADIUS.xl,
-    padding: SPACING.lg,
-    height: 120,
+    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.01)',
+    borderRadius: 20,
+    padding: 20,
+    height: 128,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 10,
   },
   createFolderText: {
-    fontSize: 12,
+    fontSize: 13,
+    fontWeight: '600',
     color: COLORS.footerText,
+  },
+  emptyPrompt: {
+    marginTop: 32,
+    paddingHorizontal: 24,
+  },
+  emptyPromptText: {
+    fontSize: 13,
+    color: COLORS.textDim,
+    lineHeight: 20,
+    textAlign: 'center',
   },
 });

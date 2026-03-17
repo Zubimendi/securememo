@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,9 @@ import {
   Platform,
 } from 'react-native';
 import { Svg, Path, Circle, Line, Rect, Polyline } from 'react-native-svg';
+import { useRouter } from 'expo-router';
 import { COLORS, SPACING, BORDER_RADIUS } from '../../src/theme';
+import { Note, useNotesStore } from '../../src/store/notesStore';
 
 /* ── Icons ── */
 
@@ -49,24 +51,6 @@ function LockIcon() {
   );
 }
 
-function ClockIcon() {
-  return (
-    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={COLORS.textDim} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <Circle cx={12} cy={12} r={10} />
-      <Path d="M12 6v6l4 2" />
-    </Svg>
-  );
-}
-
-function ArrowUpLeftIcon() {
-  return (
-    <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={COLORS.footerText} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <Line x1={17} y1={17} x2={7} y2={7} />
-      <Polyline points="7 17 7 7 17 7" />
-    </Svg>
-  );
-}
-
 function CalendarIcon() {
   return (
     <Svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke={COLORS.textDim} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -78,16 +62,47 @@ function CalendarIcon() {
   );
 }
 
-// Data definitions
-const FILTER_CHIPS = ['All', 'Titles only', 'Content', 'Tags'];
-const RECENT_SEARCHES = ['Project Q4 strategy', 'Vault keys backup', '#fitness_goals'];
+const FILTER_CHIPS = ['All', 'Titles', 'Content', 'Tags'];
 
 export default function SearchScreen() {
+  const router = useRouter();
+  const { notes } = useNotesStore();
   const [query, setQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
 
-  // Simple hardcoded checks imitating the search view design
-  const showResults = query.length > 0;
+  const results = useMemo(() => {
+    if (!query.trim()) return [];
+    
+    const lowerQuery = query.toLowerCase();
+    return notes.filter(note => {
+      // Don't show deleted notes in search
+      if (note.deleted) return false;
+
+      const titleMatch = note.title.toLowerCase().includes(lowerQuery);
+      const contentMatch = note.content.toLowerCase().includes(lowerQuery);
+      const tagMatch = note.tags.some(t => t.toLowerCase().includes(lowerQuery));
+
+      if (activeFilter === 'Titles') return titleMatch;
+      if (activeFilter === 'Content') return contentMatch;
+      if (activeFilter === 'Tags') return tagMatch;
+      
+      return titleMatch || contentMatch || tagMatch;
+    });
+  }, [query, notes, activeFilter]);
+
+  const highlightText = (text: string, highlight: string) => {
+    if (!highlight.trim()) return <Text>{text}</Text>;
+    const parts = text.split(new RegExp(`(${highlight})`, 'gi'));
+    return (
+      <Text>
+        {parts.map((part, i) => (
+          part.toLowerCase() === highlight.toLowerCase() 
+            ? <Text key={i} style={styles.highlight}>{part}</Text>
+            : <Text key={i}>{part}</Text>
+        ))}
+      </Text>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -95,12 +110,12 @@ export default function SearchScreen() {
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View style={styles.titleRow}>
-            <Pressable style={styles.iconButton}>
+            <Pressable style={styles.iconButton} onPress={() => router.back()}>
               <BackIcon />
             </Pressable>
-            <Text style={styles.title}>Search</Text>
+            <Text style={styles.title}>Secure Search</Text>
           </View>
-          <Pressable style={styles.iconButton}>
+          <Pressable style={styles.iconButton} onPress={() => setQuery('')}>
             <CloseIcon />
           </Pressable>
         </View>
@@ -112,11 +127,13 @@ export default function SearchScreen() {
           </View>
           <TextInput
             style={styles.searchInput}
-            placeholder="Search titles, content, tags..."
+            placeholder="Search your decrypted vault..."
             placeholderTextColor={COLORS.textDim}
             value={query}
             onChangeText={setQuery}
             autoFocus
+            autoCapitalize="none"
+            autoCorrect={false}
           />
         </View>
 
@@ -124,7 +141,7 @@ export default function SearchScreen() {
         <View style={styles.encryptionBadge}>
           <LockIcon />
           <Text style={styles.encryptionText}>
-            Client-side search only · Your queries stay on this device
+            Zero-Knowledge Search · Queries never leave this device
           </Text>
         </View>
       </View>
@@ -159,95 +176,56 @@ export default function SearchScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Recent Searches ── */}
-        {!showResults && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>RECENT</Text>
-              <Pressable>
-                <Text style={styles.clearAllText}>CLEAR ALL</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.recentList}>
-              {RECENT_SEARCHES.map((item) => (
-                <Pressable key={item} style={styles.recentItem} onPress={() => setQuery(item)}>
-                  <View style={styles.recentLeft}>
-                    <ClockIcon />
-                    <Text style={styles.recentText}>{item}</Text>
-                  </View>
-                  <ArrowUpLeftIcon />
-                </Pressable>
-              ))}
-            </View>
+        {query.length > 0 && results.length === 0 && (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateText}>No matches found in your vault.</Text>
           </View>
         )}
 
-        {/* ── Simulated Search Results ── */}
-        {showResults && (
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { marginBottom: 16 }]}>RESULTS</Text>
-
-            {/* Result Card 1 */}
-            <Pressable style={styles.resultCard}>
-              <View style={styles.resultHeader}>
-                <Text style={styles.resultTitle}>
-                  Annual <Text style={styles.highlight}>Strategy</Text> 2024
-                </Text>
-                <View style={styles.matchTypeBadge}>
-                  <Text style={styles.matchTypeText}>TITLE</Text>
-                </View>
-              </View>
-              <Text style={styles.resultPreview} numberOfLines={2}>
-                Outlining the primary <Text style={styles.highlight}>strategy</Text> for the next four quarters. Key focus remains on end-to-end encryption...
+        {results.map((note) => (
+          <Pressable 
+            key={note.id} 
+            style={styles.resultCard}
+            onPress={() => router.push(`/(app)/note/${note.id}`)}
+          >
+            <View style={styles.resultHeader}>
+              <Text style={styles.resultTitle} numberOfLines={1}>
+                {highlightText(note.title, query)}
               </Text>
-              <View style={styles.resultFooter}>
-                <CalendarIcon />
-                <Text style={styles.resultDate}>OCT 12</Text>
-              </View>
-            </Pressable>
-
-            {/* Result Card 2 */}
-            <Pressable style={styles.resultCard}>
-              <View style={styles.resultHeader}>
-                <Text style={styles.resultTitle}>Team Meeting Notes</Text>
-                <View style={[styles.matchTypeBadge, styles.matchTypeBadgeContent]}>
-                  <Text style={[styles.matchTypeText, styles.matchTypeTextContent]}>CONTENT</Text>
-                </View>
-              </View>
-              <Text style={styles.resultPreview} numberOfLines={2}>
-                The team discussed the new marketing <Text style={styles.highlight}>strategy</Text> and how to implement zero-knowledge proofs...
-              </Text>
-              <View style={styles.resultFooter}>
-                <CalendarIcon />
-                <Text style={styles.resultDate}>OCT 08</Text>
-              </View>
-            </Pressable>
-
-            {/* Result Card 3 */}
-            <Pressable style={styles.resultCard}>
-              <View style={styles.resultHeader}>
-                <Text style={styles.resultTitle}>Resource Links</Text>
+              {note.folder && (
                 <View style={styles.matchTypeBadge}>
-                  <Text style={styles.matchTypeText}>TAG</Text>
+                  <Text style={styles.matchTypeText}>{note.folder.toUpperCase()}</Text>
                 </View>
-              </View>
+              )}
+            </View>
+            <Text style={styles.resultPreview} numberOfLines={2}>
+              {highlightText(note.content, query)}
+            </Text>
+            
+            {note.tags.length > 0 && (
               <View style={styles.tagResults}>
-                <View style={styles.tagChipBase}>
-                  <Text style={styles.tagChipText}>#work</Text>
-                </View>
-                <View style={[styles.tagChipBase, styles.tagChipHighlight]}>
-                  <Text style={styles.tagChipText}><Text style={styles.highlight}>#strategy</Text></Text>
-                </View>
-                <View style={styles.tagChipBase}>
-                  <Text style={styles.tagChipText}>#important</Text>
-                </View>
+                  {note.tags.map(t => (
+                      <View key={t} style={[styles.tagChipBase, t.toLowerCase().includes(query.toLowerCase()) && styles.tagChipHighlight]}>
+                          <Text style={styles.tagChipText}>{highlightText('#' + t, query)}</Text>
+                      </View>
+                  ))}
               </View>
-            </Pressable>
+            )}
 
+            <View style={styles.resultFooter}>
+              <CalendarIcon />
+              <Text style={styles.resultDate}>
+                {new Date(note.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+              </Text>
+            </View>
+          </Pressable>
+        ))}
+
+        {!query && (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateText}>Enter a search term to find notes securely.</Text>
           </View>
         )}
-
       </ScrollView>
     </View>
   );
@@ -256,20 +234,18 @@ export default function SearchScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0f', // Matching background-dark from HTML
+    backgroundColor: COLORS.vaultBlack,
   },
-
-  /* Header */
   header: {
     paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'ios' ? 48 : 32,
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
     paddingBottom: 16,
   },
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   titleRow: {
     flexDirection: 'row',
@@ -280,18 +256,16 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   title: {
-    fontSize: 28,
-    color: '#f8f6f6', // background-light roughly maps to this slate-100/text primary
+    fontSize: 24,
+    color: COLORS.textLight,
+    fontWeight: '600',
   },
-
-  /* Search Input */
   searchInputContainer: {
-    position: 'relative',
-    height: 52,
-    backgroundColor: COLORS.surface, // Maps to card-dark
-    borderRadius: BORDER_RADIUS.xl,
-    borderWidth: 1.5,
-    borderColor: COLORS.vaultTeal, // Maps to primary
+    height: 56,
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(13, 115, 119, 0.5)',
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -303,12 +277,9 @@ const styles = StyleSheet.create({
     flex: 1,
     height: '100%',
     color: COLORS.textLight,
-    fontSize: 15,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', // Mimicking JetBrains Mono
+    fontSize: 16,
     paddingRight: 16,
   },
-
-  /* Encryption Badge */
   encryptionBadge: {
     marginTop: 16,
     flexDirection: 'row',
@@ -316,150 +287,124 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: 'rgba(13, 115, 119, 0.1)',
+    backgroundColor: 'rgba(13, 115, 119, 0.05)',
     borderWidth: 1,
-    borderColor: 'rgba(13, 115, 119, 0.3)',
-    borderRadius: BORDER_RADIUS.lg,
+    borderColor: 'rgba(13, 115, 119, 0.15)',
+    borderRadius: 12,
   },
   encryptionText: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: 11,
+    fontWeight: '600',
     color: COLORS.vaultTeal,
-    letterSpacing: 0.3,
+    letterSpacing: 0.5,
   },
-
-  /* Filter Chips */
   filterContainer: {
-    marginBottom: 32,
+    marginBottom: 20,
   },
   filterScroll: {
     paddingHorizontal: 24,
-    gap: 8,
+    gap: 10,
   },
   filterChip: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 8,
     backgroundColor: COLORS.surface,
     borderWidth: 1,
-    borderColor: '#1e293b',
-    borderRadius: BORDER_RADIUS.full,
+    borderColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
   },
   filterChipActive: {
     backgroundColor: COLORS.vaultTeal,
     borderColor: COLORS.vaultTeal,
   },
   filterText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#94a3b8',
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textDim,
   },
   filterTextActive: {
-    color: '#ffffff',
+    color: COLORS.vaultBlack,
   },
-
-  /* Main Content Layout */
   mainContent: {
     flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 24,
-    paddingBottom: 100, // accommodate bottom tab bar
+    paddingBottom: 40,
   },
-
-  /* Section Styles */
-  section: {
-    marginBottom: 40,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  emptyState: {
+    marginTop: 40,
     alignItems: 'center',
-    marginBottom: 16,
   },
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: '700',
+  emptyStateText: {
     color: COLORS.textDim,
-    letterSpacing: 1,
-  },
-  clearAllText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.vaultTeal,
-    letterSpacing: 1,
-  },
-
-  /* Recent UI */
-  recentList: {
-    gap: 4,
-  },
-  recentItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(15, 23, 42, 0.5)', // Slate-900/50 approx
-  },
-  recentLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  recentText: {
     fontSize: 14,
-    color: '#cbd5e1', // Slate-300
   },
-
-  /* Search Results UI */
   resultCard: {
-    backgroundColor: 'rgba(17, 24, 39, 0.4)', // Card-dark with opacity
+    backgroundColor: COLORS.surface,
     borderWidth: 1,
-    borderColor: 'rgba(30, 41, 59, 0.5)',
-    borderRadius: BORDER_RADIUS.xl,
+    borderColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 16,
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   resultHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginBottom: 8,
   },
   resultTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#f1f5f9', // Slate-100
+    color: COLORS.textLight,
+    flex: 1,
+    marginRight: 8,
   },
   highlight: {
-    backgroundColor: COLORS.vaultTeal,
-    color: '#ffffff',
+    backgroundColor: 'rgba(13, 115, 119, 0.3)',
+    color: COLORS.vaultTeal,
+    fontWeight: '700',
   },
   matchTypeBadge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 4,
-    backgroundColor: 'rgba(13, 115, 119, 0.2)', // primary/20
+    borderRadius: 6,
+    backgroundColor: 'rgba(13, 115, 119, 0.1)',
     borderWidth: 1,
-    borderColor: 'rgba(13, 115, 119, 0.3)',
+    borderColor: 'rgba(13, 115, 119, 0.2)',
   },
   matchTypeText: {
-    fontSize: 10,
-    fontWeight: '700',
+    fontSize: 9,
+    fontWeight: '800',
     color: COLORS.vaultTeal,
-    letterSpacing: -0.5,
-  },
-  matchTypeBadgeContent: {
-    backgroundColor: '#1e293b', // slate-800
-    borderColor: '#334155', // slate-700
-  },
-  matchTypeTextContent: {
-    color: '#94a3b8', // slate-400
   },
   resultPreview: {
-    fontSize: 14,
-    lineHeight: 22,
-    color: '#94a3b8', // slate-400
+    fontSize: 13,
+    lineHeight: 20,
+    color: COLORS.textDim,
+  },
+  tagResults: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 12,
+  },
+  tagChipBase: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  tagChipHighlight: {
+    borderColor: 'rgba(13, 115, 119, 0.4)',
+    backgroundColor: 'rgba(13, 115, 119, 0.05)',
+  },
+  tagChipText: {
+    fontSize: 11,
+    color: COLORS.textMuted,
   },
   resultFooter: {
     marginTop: 12,
@@ -470,29 +415,7 @@ const styles = StyleSheet.create({
   resultDate: {
     fontSize: 10,
     fontWeight: '700',
-    color: COLORS.textDim,
-    letterSpacing: 1,
-  },
-
-  /* Tag Result variants */
-  tagResults: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 8,
-  },
-  tagChipBase: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: '#0f172a', // Slate-900
-    borderRadius: 4,
-  },
-  tagChipHighlight: {
-    borderWidth: 1,
-    borderColor: COLORS.vaultTeal,
-  },
-  tagChipText: {
-    fontSize: 12,
-    color: '#cbd5e1', // Slate-300
+    color: COLORS.footerText,
+    letterSpacing: 0.5,
   },
 });

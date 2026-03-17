@@ -10,7 +10,7 @@ import {
   RefreshControl,
   Platform,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@apollo/client';
 import { Svg, Path, Circle, Line } from 'react-native-svg';
 import { COLORS, SPACING, BORDER_RADIUS } from '../../src/theme';
@@ -70,8 +70,15 @@ const FILTER_CHIPS = ['All Notes', 'Personal', 'Work', 'Finance', 'Ideas'];
 
 export default function HomeScreen() {
   const router = useRouter();
-  const [activeFilter, setActiveFilter] = useState('All Notes');
+  const params = useLocalSearchParams<{ folder?: string }>();
+  const [activeFilter, setActiveFilter] = useState<string>(params.folder || 'All Notes');
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    if (params.folder) {
+      setActiveFilter(params.folder);
+    }
+  }, [params.folder]);
   
   const { notes, loadNotes, isLoading: storeLoading } = useNotesStore();
   const { vaultKey, isUnlocked } = useVaultStore();

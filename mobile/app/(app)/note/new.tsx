@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useMutation } from '@apollo/client';
 import { Svg, Path, Line } from 'react-native-svg';
 import { COLORS, SPACING, BORDER_RADIUS } from '../../../src/theme';
@@ -53,13 +53,14 @@ function AddIcon() {
 
 export default function NewNoteScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ initialFolder?: string }>();
   const { vaultKey } = useVaultStore();
   const { encryptNote, decryptNote, addNote } = useNotesStore();
 
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [tags, setTags] = useState<string[]>([]);
-  const [folder, setFolder] = useState<string | null>(null);
+  const [folder, setFolder] = useState<string | null>(params.initialFolder || null);
   const [activeFormat, setActiveFormat] = useState<string | undefined>(undefined);
   const [isSaving, setIsSaving] = useState(false);
 
