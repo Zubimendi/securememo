@@ -1,5 +1,13 @@
 import { Slot, useRouter, useSegments } from 'expo-router';
-import { View, StyleSheet, StatusBar, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, StatusBar, ActivityIndicator, Platform } from 'react-native';
+
+// Polyfill for libraries that expect a browser environment (like argon2-wasm-pro)
+if (Platform.OS !== 'web' && typeof document === 'undefined') {
+  (global as any).document = {
+    createElement: () => ({}),
+  };
+}
+
 import { ApolloProvider } from '@apollo/client';
 import { useEffect, useState } from 'react';
 import { COLORS } from '../src/theme';

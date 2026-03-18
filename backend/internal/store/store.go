@@ -57,4 +57,7 @@ type Store interface {
 	RestoreNote(ctx context.Context, userID, noteID string) error
 	EmptyTrash(ctx context.Context, userID string) error
 	GetNoteCount(ctx context.Context, userID string) (int, error)
+
+	// Audit Trail
+	CreateAuditLog(ctx context.Context, entry AuditLog) error
 }

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -10,6 +11,14 @@ import (
 
 type SupabaseStore struct {
 	pool *pgxpool.Pool
+}
+
+type AuditLog struct {
+	UserID    string
+	Action    string
+	Metadata  map[string]interface{}
+	IPAddress string
+	UserAgent string
 }
 
 func NewSupabaseStore(ctx context.Context, dsn string) (*SupabaseStore, error) {
@@ -313,4 +322,16 @@ func (s *SupabaseStore) UpdateVaultConfig(ctx context.Context, cfg VaultConfig) 
 		cfg.RecoveryKeySalt, cfg.UserID,
 	).Scan(&cfg.ID, &cfg.CreatedAt, &cfg.UpdatedAt)
 	return &cfg, err
+}
+
+func (s *SupabaseStore) CreateAuditLog(ctx context.Context, entry AuditLog) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO audit_logs (user_id, action, metadata, ip_address, user_agent)
+		VALUES ($1, $2, $3, $4, $5)`,
+		entry.UserID, entry.Action, entry.Metadata, entry.IPAddress, entry.UserAgent,
+	)
+	if err != nil {
+		log.Printf("⚠️ Failed to write audit log: %v", err)
+	}
+	return err
 }

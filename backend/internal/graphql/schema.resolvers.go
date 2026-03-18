@@ -191,6 +191,16 @@ func (r *mutationResolver) SetupVault(ctx context.Context, input SetupVaultInput
 	if err != nil {
 		return nil, err
 	}
+
+	// Audit Trail
+	_ = r.Store.CreateAuditLog(ctx, store.AuditLog{
+		UserID: userID,
+		Action: "VAULT_SETUP_INITIAL",
+		Metadata: map[string]interface{}{
+			"vault_id": result.ID,
+		},
+	})
+
 	return vaultConfigToGQL(result), nil
 }
 
@@ -214,6 +224,16 @@ func (r *mutationResolver) UpdateVaultConfig(ctx context.Context, input SetupVau
 	if err != nil {
 		return nil, err
 	}
+
+	// Audit Trail
+	_ = r.Store.CreateAuditLog(ctx, store.AuditLog{
+		UserID: userID,
+		Action: "VAULT_CONFIG_UPDATE",
+		Metadata: map[string]interface{}{
+			"vault_id": result.ID,
+		},
+	})
+
 	return vaultConfigToGQL(result), nil
 }
 
@@ -237,6 +257,17 @@ func (r *mutationResolver) CreateNote(ctx context.Context, input CreateNoteInput
 	if err != nil {
 		return nil, err
 	}
+
+	// Audit Trail
+	_ = r.Store.CreateAuditLog(ctx, store.AuditLog{
+		UserID: userID,
+		Action: "NOTE_CREATE",
+		Metadata: map[string]interface{}{
+			"note_id":   result.ID,
+			"byte_size": result.ByteSize,
+		},
+	})
+
 	return noteToGQL(result), nil
 }
 
@@ -268,6 +299,15 @@ func (r *mutationResolver) UpdateNote(ctx context.Context, id string, input Upda
 		note.Pinned = *input.Pinned
 	}
 	result, err := r.Store.UpdateNote(ctx, note)
+	if err == nil {
+		_ = r.Store.CreateAuditLog(ctx, store.AuditLog{
+			UserID: userID,
+			Action: "NOTE_UPDATE",
+			Metadata: map[string]interface{}{
+				"note_id": id,
+			},
+		})
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -281,6 +321,15 @@ func (r *mutationResolver) DeleteNote(ctx context.Context, id string) (bool, err
 		return false, err
 	}
 	err = r.Store.SoftDeleteNote(ctx, userID, id)
+	if err == nil {
+		_ = r.Store.CreateAuditLog(ctx, store.AuditLog{
+			UserID: userID,
+			Action: "NOTE_DELETE_SOFT",
+			Metadata: map[string]interface{}{
+				"note_id": id,
+			},
+		})
+	}
 	return err == nil, err
 }
 
@@ -291,6 +340,15 @@ func (r *mutationResolver) PermanentlyDeleteNote(ctx context.Context, id string)
 		return false, err
 	}
 	err = r.Store.HardDeleteNote(ctx, userID, id)
+	if err == nil {
+		_ = r.Store.CreateAuditLog(ctx, store.AuditLog{
+			UserID: userID,
+			Action: "NOTE_DELETE_HARD",
+			Metadata: map[string]interface{}{
+				"note_id": id,
+			},
+		})
+	}
 	return err == nil, err
 }
 
@@ -301,6 +359,15 @@ func (r *mutationResolver) RestoreNote(ctx context.Context, id string) (bool, er
 		return false, err
 	}
 	err = r.Store.RestoreNote(ctx, userID, id)
+	if err == nil {
+		_ = r.Store.CreateAuditLog(ctx, store.AuditLog{
+			UserID: userID,
+			Action: "NOTE_RESTORE",
+			Metadata: map[string]interface{}{
+				"note_id": id,
+			},
+		})
+	}
 	return err == nil, err
 }
 
@@ -311,6 +378,12 @@ func (r *mutationResolver) EmptyTrash(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	err = r.Store.EmptyTrash(ctx, userID)
+	if err == nil {
+		_ = r.Store.CreateAuditLog(ctx, store.AuditLog{
+			UserID: userID,
+			Action: "TRASH_EMPTY",
+		})
+	}
 	return err == nil, err
 }
 
