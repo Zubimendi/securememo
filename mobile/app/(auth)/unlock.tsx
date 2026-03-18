@@ -8,16 +8,11 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  Animated,
+  Easing,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withSequence,
-  withTiming,
-  Easing,
-} from 'react-native-reanimated';
 import { Svg, Path, Circle } from 'react-native-svg';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { COLORS, SPACING, BORDER_RADIUS } from '../../src/theme';
@@ -51,6 +46,25 @@ function LockKeyIcon() {
   );
 }
 
+function EyeIcon() {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={COLORS.textDim} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <Circle cx={12} cy={12} r={3} />
+    </Svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={COLORS.textDim} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+      <Path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+      <Path d="M1 1l22 22" />
+    </Svg>
+  );
+}
+
 export default function UnlockScreen() {
   const router = useRouter();
   const { unlock } = useVaultStore();
@@ -58,24 +72,23 @@ export default function UnlockScreen() {
 
   const [showPasswordInput, setShowPasswordInput] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [biometricsAvailable, setBiometricsAvailable] = useState(false);
 
   // Fetch vault config from backend
   const { data: configData, loading: configLoading, error: configError } = useQuery(GET_VAULT_CONFIG);
 
-  // Pulse glow animation
-  const glowIntensity = useSharedValue(10);
+  // Pulse glow animation using RN Animated
+  const glowAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    glowIntensity.value = withRepeat(
-      withSequence(
-        withTiming(25, { duration: 1500, easing: Easing.inOut(Easing.cubic) }),
-        withTiming(10, { duration: 1500, easing: Easing.inOut(Easing.cubic) })
-      ),
-      -1,
-      false
-    );
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }),
+        Animated.timing(glowAnim, { toValue: 0, duration: 1500, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }),
+      ])
+    ).start();
 
     checkBiometrics();
     
@@ -85,10 +98,15 @@ export default function UnlockScreen() {
     }, 500);
   }, []);
 
-  const glowStyle = useAnimatedStyle(() => ({
-    shadowOpacity: glowIntensity.value / 25,
-    shadowRadius: glowIntensity.value,
-  }));
+  const glowOpacity = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [10 / 25, 25 / 25],
+  });
+
+  const glowRadius = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [10, 25],
+  });
 
   const checkBiometrics = async () => {
     const compatible = await LocalAuthentication.hasHardwareAsync();
@@ -109,7 +127,7 @@ export default function UnlockScreen() {
       if (result.success) {
         const key = await getVaultKey();
         if (key) {
-          unlock(key, '', ''); // We don't have salt/params in keychain yet, but the key itself is enough
+          unlock(key, '', '');
           router.replace('/(app)');
         } else {
           setShowPasswordInput(true);
@@ -138,7 +156,7 @@ export default function UnlockScreen() {
         }
       );
 
-      unlock(key, vaultConfig.argon2Salt, ''); // update store
+      unlock(key, vaultConfig.argon2Salt, '');
       router.replace('/(app)');
     } catch (err: any) {
       console.error('Unlock failed:', err);
@@ -163,16 +181,40 @@ export default function UnlockScreen() {
   }
 
   if (configLoading) {
+      console.log("[Unlock] Loading vault config from backend...");
       return (
           <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
               <ActivityIndicator size="large" color={COLORS.vaultTeal} />
               <Text style={{ color: COLORS.textMuted, marginTop: 16 }}>Connecting to vault...</Text>
+              <Text style={{ color: COLORS.textDim, fontSize: 10, marginTop: 8 }}>API: {process.env.EXPO_PUBLIC_API_URL}</Text>
+          </View>
+      )
+  }
+
+  if (configError) {
+      console.error("[Unlock] Backend Connectivity Error:", configError);
+      return (
+          <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 32 }]}>
+              <Text style={{ color: COLORS.red, marginBottom: 16, textAlign: 'center' }}>Connection Error</Text>
+              <Text style={{ color: COLORS.textDim, textAlign: 'center', marginBottom: 24 }}>
+                Unable to reach the SecureMemo backend at {process.env.EXPO_PUBLIC_API_URL}. 
+                Please ensure your server is running and your phone is on the same WiFi.
+              </Text>
+              <Pressable 
+                style={styles.unlockButton} 
+                onPress={() => router.replace('/')}
+              >
+                <Text style={styles.unlockButtonText}>Retry Connection</Text>
+              </Pressable>
           </View>
       )
   }
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       {/* Branding Section */}
       <View style={styles.brandingSection}>
         <View style={styles.hexShield}>
@@ -187,7 +229,10 @@ export default function UnlockScreen() {
         {!showPasswordInput ? (
           <>
             <View style={styles.biometricContainer}>
-              <Animated.View style={[styles.biometricButtonShadow, glowStyle]}>
+              <Animated.View style={[styles.biometricButtonShadow, {
+                shadowOpacity: glowOpacity,
+                shadowRadius: glowRadius,
+              }]}>
                 <Pressable
                   style={styles.biometricButton}
                   onPress={handleBiometricUnlock}
@@ -213,7 +258,7 @@ export default function UnlockScreen() {
                 style={styles.passwordInput}
                 placeholder="Enter master password"
                 placeholderTextColor={COLORS.darkGray}
-                secureTextEntry
+                secureTextEntry={!showPassword}
                 value={masterPassword}
                 onChangeText={setMasterPassword}
                 autoCapitalize="none"
@@ -222,6 +267,13 @@ export default function UnlockScreen() {
                 onSubmitEditing={handlePasswordUnlock}
                 returnKeyType="done"
               />
+              <Pressable
+                style={styles.eyeButton}
+                onPress={() => setShowPassword(!showPassword)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+              </Pressable>
             </View>
 
             <Pressable
@@ -263,7 +315,7 @@ export default function UnlockScreen() {
           <Text style={styles.lockStatusText}>AES-256 Protected</Text>
         </View>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -355,12 +407,17 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.lg,
     height: 56,
     paddingHorizontal: SPACING.lg,
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: SPACING.lg,
   },
   passwordInput: {
+    flex: 1,
     color: COLORS.textLight,
     fontSize: 16,
+  },
+  eyeButton: {
+    padding: 8,
   },
   unlockButton: {
     width: '100%',

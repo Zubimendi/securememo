@@ -1,14 +1,14 @@
 import * as Crypto from 'expo-crypto';
 import { encode as base64Encode, decode as base64Decode } from 'base-64';
 
-// Argon2id parameters — tuned for mobile (balance of security and speed)
-// These must match what the backend stores in vault_configs
+// Argon2id parameters — tuned for mobile stability
+// 32MB is still very secure but much safer for mobile WASM memory limits.
 export const ARGON2_PARAMS = {
-  memory: 65536,       // 64MB — enough to resist GPU attacks
+  memory: 32768,       // 32MB (safer than 64MB for Expo Go)
   iterations: 3,       // 3 passes
-  parallelism: 4,       // 4 threads
+  parallelism: 1,      // 1 thread (safer for mobile resource allocation)
   hashLength: 32,      // 256-bit output key
-  type: 2,             // Argon2id (hybrid of Argon2i and Argon2d)
+  type: 2,             // Argon2id
 } as const;
 
 // React Native doesn't have a native Argon2 binding in expo-crypto yet.
@@ -44,6 +44,7 @@ export async function deriveVaultKey(
   const saltHex = salt ?? await generateSalt();
   const saltBytes = hexToBytes(saltHex);
 
+  console.log(`[Argon2] Starting hash (mem: ${ARGON2_PARAMS.memory}, time: ${ARGON2_PARAMS.iterations})...`);
   const result = await argon2.hash({
     pass: masterPassword,
     salt: saltBytes,
@@ -53,6 +54,7 @@ export async function deriveVaultKey(
     hashLen: ARGON2_PARAMS.hashLength,
     type: ARGON2_PARAMS.type,
   });
+  console.log(`[Argon2] Hash complete.`);
 
   return {
     key: result.hash,
@@ -74,15 +76,17 @@ export async function deriveRecoveryKey(
   const saltHex = salt ?? await generateSalt();
   const saltBytes = hexToBytes(saltHex);
 
+  console.log(`[Argon2] Starting recovery key hash...`);
   const result = await argon2.hash({
     pass: recoveryPhrase.trim().toLowerCase(),
     salt: saltBytes,
     time: 2,
-    mem: 32768,   // 32MB for recovery (faster UX on recovery flow)
-    parallelism: 2,
+    mem: 32768,   // 32MB for recovery
+    parallelism: 1, // Single thread for stability
     hashLen: 32,
     type: 2,
   });
+  console.log(`[Argon2] Recovery hash complete.`);
 
   return {
     key: result.hash,

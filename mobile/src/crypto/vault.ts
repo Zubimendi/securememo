@@ -34,33 +34,43 @@ export interface VaultSetupResult {
  * The master password just protects access to the vault key.
  */
 export async function createVault(masterPassword: string): Promise<VaultSetupResult> {
+  console.log("[Vault] Starting vault creation...");
+  
   // Generate the vault key — this is what encrypts notes
+  console.log("[Vault] Generating random key...");
   const vaultKeyBytes = await Crypto.getRandomBytesAsync(32);
   const vaultKeyHex = Array.from(vaultKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
 
   // Derive a key from master password
+  console.log("[Vault] Deriving master key via Argon2...");
   const masterDerived = await deriveVaultKey(masterPassword);
 
   // Encrypt vault key with master-password-derived key
+  console.log("[Vault] Encrypting vault key with master key...");
   const encryptedVaultKey = await encrypt(vaultKeyHex, masterDerived.key);
 
   // Generate recovery phrase (128 bits of entropy = 16 BIP-39 words)
+  console.log("[Vault] Generating recovery phrase...");
   const recoveryPhrase = await generateRecoveryPhrase();
 
   // Derive a key from the recovery phrase
+  console.log("[Vault] Deriving recovery key via Argon2...");
   const recoveryDerived = await deriveRecoveryKey(recoveryPhrase);
 
   // Encrypt vault key with recovery key (backup method)
+  console.log("[Vault] Encrypting vault key with recovery key...");
   const encryptedRecoveryKey = await encrypt(vaultKeyHex, recoveryDerived.key);
 
-  // Store vault key in device keychain — survives app restart, requires biometric
+  // Store vault key in device keychain
+  console.log("[Vault] Saving to SecureStore...");
   await SecureStore.setItemAsync(VAULT_KEY_STORE_KEY, vaultKeyHex, {
-    requireAuthentication: false, // biometric enforced at app layer
+    requireAuthentication: false,
     keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
   });
   await SecureStore.setItemAsync(VAULT_SALT_STORE_KEY, masterDerived.salt);
   await SecureStore.setItemAsync(VAULT_SETUP_FLAG, 'true');
 
+  console.log("[Vault] Creation complete.");
   return {
     encryptedVaultKey,
     argon2Salt:           masterDerived.salt,
@@ -69,7 +79,7 @@ export async function createVault(masterPassword: string): Promise<VaultSetupRes
     argon2Parallelism:    masterDerived.params.parallelism,
     encryptedRecoveryKey,
     recoveryKeySalt:      recoveryDerived.salt,
-    recoveryPhrase,       // shown ONCE to user — we never store this
+    recoveryPhrase,
   };
 }
 

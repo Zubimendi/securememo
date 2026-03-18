@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -21,12 +22,14 @@ func ValidateSupabaseJWT(jwtSecret string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
+				log.Printf("⚠️ Auth failed: missing authorization header")
 				http.Error(w, "missing authorization header", http.StatusUnauthorized)
 				return
 			}
 
 			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 			if tokenStr == authHeader {
+				log.Printf("⚠️ Auth failed: invalid authorization format")
 				http.Error(w, "invalid authorization format — use Bearer <token>", http.StatusUnauthorized)
 				return
 			}
@@ -39,6 +42,7 @@ func ValidateSupabaseJWT(jwtSecret string) func(http.Handler) http.Handler {
 			})
 
 			if err != nil || !token.Valid {
+				log.Printf("❌ Auth failed: invalid token: %v", err)
 				http.Error(w, "invalid token", http.StatusUnauthorized)
 				return
 			}
@@ -51,6 +55,7 @@ func ValidateSupabaseJWT(jwtSecret string) func(http.Handler) http.Handler {
 
 			userID, ok := claims["sub"].(string)
 			if !ok || userID == "" {
+				log.Printf("⚠️ Auth failed: missing user ID in claims")
 				http.Error(w, "missing user ID in token", http.StatusUnauthorized)
 				return
 			}
@@ -60,6 +65,7 @@ func ValidateSupabaseJWT(jwtSecret string) func(http.Handler) http.Handler {
 			ctx := context.WithValue(r.Context(), UserIDKey, userID)
 			if email != "" {
 				ctx = context.WithValue(ctx, UserEmailKey, email)
+				log.Printf("👤 Validated session for user: %s", email)
 			}
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

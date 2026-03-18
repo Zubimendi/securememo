@@ -6,14 +6,17 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/99designs/gqlgen/graphql"
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
 	"github.com/rs/cors"
 
+	"github.com/vektah/gqlparser/v2/gqlerror"
 	"github.com/Zubimendi/securememo/internal/auth"
-	"github.com/Zubimendi/securememo/internal/graphql"
+	internal_graphql "github.com/Zubimendi/securememo/internal/graphql"
 	"github.com/Zubimendi/securememo/internal/store"
 )
 
@@ -46,15 +49,24 @@ func main() {
 	}
 
 	// 3. Setup GraphQL Resolver
-	resolver := &graphql.Resolver{
+	resolver := &internal_graphql.Resolver{
 		Store: s,
 	}
 
 	// 4. Create GraphQL Handler
-	srv := handler.NewDefaultServer(graphql.NewExecutableSchema(graphql.Config{Resolvers: resolver}))
+	srv := handler.NewDefaultServer(internal_graphql.NewExecutableSchema(internal_graphql.Config{Resolvers: resolver}))
+
+	// Log resolver errors to console
+	srv.SetErrorPresenter(func(ctx context.Context, e error) *gqlerror.Error {
+		log.Printf("🔥 GraphQL Error: %v", e)
+		return graphql.DefaultErrorPresenter(ctx, e)
+	})
 
 	// 5. Setup Router with Middleware
 	r := chi.NewRouter()
+
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
 
 	// CORS configuration
 	c := cors.New(cors.Options{

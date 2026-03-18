@@ -12,9 +12,15 @@ export default function Index() {
   const [vaultSetup, setVaultSetup] = React.useState<boolean | null>(null);
 
   useEffect(() => {
-    isVaultSetup().then(setVaultSetup);
+    console.log("[Index] Initializing session/vault status...");
+    isVaultSetup().then(flag => {
+      console.log("[Index] Vault Setup Flag:", flag);
+      setVaultSetup(flag);
+    });
     hydrate();
   }, []);
+
+  console.log("[Index] Current State:", { session: !!session, vaultSetup, isUnlocked, authLoading });
 
   if (authLoading || vaultSetup === null) {
     return (
